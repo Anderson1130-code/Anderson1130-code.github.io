@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0756a5" />
+    <meta name="description" content="Pesquise e visualize checklist das VTR." />
+    <title>Checklist VTR</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="14ª CICOM Checklist VTR - início">
+          <img class="brand-emblem" src="./14-cicom.png" alt="" />
+          <span class="brand-copy">
+            <small>14ª CICOM</small>
+            <span>VTR <strong>CHECKLIST</strong></span>
+          </span>
+        </a>
+        <div id="userActions" class="user-actions hidden">
+          <button id="settingsButton" class="icon-button" type="button" aria-label="Configurações" title="Configurações">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19.1 13 .1-1-.1-1 2.1-1.6-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.6 3h-4L10 6a8 8 0 0 0-1.7 1L5.8 6 3.8 9.4 5.9 11l-.1 1 .1 1-2.1 1.6 2 3.4 2.5-1a8 8 0 0 0 1.7 1l.5 3h4l.5-3a8 8 0 0 0 1.7-1l2.5 1 2-3.4L19.1 13ZM12.5 15.5A3.5 3.5 0 1 1 12.5 8a3.5 3.5 0 0 1 0 7.5Z"/></svg>
+          </button>
+          <button id="logoutButton" class="text-button" type="button">Sair</button>
+        </div>
+      </header>
+
+      <main>
+        <section id="loginView" class="login-view">
+          <div class="login-card">
+            <div class="hero-emblem">
+              <img src="./14-cicom.png" alt="Brasão da 14ª CICOM" />
+            </div>
+            <p class="eyebrow">14ª CICOM • ACESSO A DOCUMENTOS</p>
+            <h1>Encontre os checklist<br />de suas VTR.</h1>
+            <p class="subtitle">Pesquise por VTR ou data, visualize e baixe os arquivos diretamente no celular.</p>
+
+            <div id="setupNotice" class="setup-notice hidden">
+              <strong>Configuração necessária</strong>
+              <span>Informe o Client ID OAuth do Google antes de entrar.</span>
+              <button id="openSetupButton" type="button">Configurar agora</button>
+            </div>
+
+            <button id="loginButton" class="google-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.9h5.4a4.6 4.6 0 0 1-2 3v2.5h3.3c1.9-1.8 2.9-4.4 2.9-7.4Z"/>
+                <path fill="#34A853" d="M12 22c2.7 0 5-.9 6.7-2.4l-3.3-2.5c-.9.6-2.1 1-3.4 1a5.9 5.9 0 0 1-5.5-4.1H3.1v2.6A10 10 0 0 0 12 22Z"/>
+                <path fill="#FBBC05" d="M6.5 14a6 6 0 0 1 0-3.9V7.4H3.1a10 10 0 0 0 0 9.2L6.5 14Z"/>
+                <path fill="#EA4335" d="M12 6a5.4 5.4 0 0 1 3.8 1.5l2.9-2.8A9.7 9.7 0 0 0 12 2a10 10 0 0 0-8.9 5.4l3.4 2.7A5.9 5.9 0 0 1 12 6Z"/>
+              </svg>
+              Entrar com suas credenciais
+            </button>
+            <button id="demoButton" class="demo-button" type="button">Visualizar demonstração</button>
+          </div>
+        </section>
+
+        <section id="searchView" class="search-view hidden">
+          <div class="search-heading">
+            <div class="search-identity">
+              <img src="./14-cicom.png" alt="" />
+              <p class="eyebrow">14ª CICOM • PESQUISA DE DOCUMENTOS</p>
+            </div>
+            <h1>Encontre seu checklist</h1>
+            <p>Use um ou ambos os campos para localizar seus checklist.</p>
+          </div>
+
+          <form id="searchForm" class="search-card">
+            <label>
+              <span>VTR</span>
+              <div class="input-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 19.6-5.2-5.2a7.5 7.5 0 1 0-1.4 1.4l5.2 5.2 1.4-1.4ZM4 10a6 6 0 1 1 12 0 6 6 0 0 1-12 0Z"/></svg>
+                <select id="vtrInput" name="vtr">
+                  <option value="">Selecione a VTR</option>
+                  <option value="25-1005">25-1005</option>
+                  <option value="25-1033">25-1033</option>
+                  <option value="25-1030">25-1030</option>
+                  <option value="25-1124">25-1124</option>
+                  <option value="25-1104">25-1104</option>
+                </select>
+              </div>
+            </label>
+            <label>
+              <span>Data do envio</span>
+              <div class="input-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h2v2h6V2h2v2h3v18H4V4h3V2Zm11 8H6v10h12V10ZM6 6v2h12V6H6Z"/></svg>
+                <input id="dateInput" name="date" type="date" />
+              </div>
+            </label>
+            <button id="searchButton" class="primary-button" type="submit">
+              <span>Pesquisar checklist</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 19.6-5.2-5.2a7.5 7.5 0 1 0-1.4 1.4l5.2 5.2 1.4-1.4ZM4 10a6 6 0 1 1 12 0 6 6 0 0 1-12 0Z"/></svg>
+            </button>
+          </form>
+
+          <div id="statusMessage" class="status-message hidden" role="status"></div>
+          <div id="resultsHeader" class="results-header hidden">
+            <div>
+              <p class="eyebrow">RESULTADOS</p>
+              <h2>Checklist encontrados</h2>
+            </div>
+            <span id="resultCount" class="count-badge"></span>
+          </div>
+          <div id="resultsList" class="results-list"></div>
+        </section>
+      </main>
+
+      <footer class="developer-footer">
+        <div class="developer-inner">
+          <img src="./anderson-gomes.png" alt="Logotipo Anderson Gomes" />
+          <div>
+            <strong>Anderson Gomes</strong>
+            <small>Aplicação desenvolvida para uso interno da 14ª CICOM.</small>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <dialog id="pdfDialog" class="pdf-dialog">
+      <div class="dialog-header">
+        <div>
+          <span>Visualizando checklist</span>
+          <strong id="pdfTitle"></strong>
+        </div>
+        <button id="closePdfButton" class="icon-button" type="button" aria-label="Fechar visualização">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>
+        </button>
+      </div>
+      <iframe id="pdfFrame" title="Visualizador de checklist"></iframe>
+    </dialog>
+
+    <dialog id="settingsDialog" class="settings-dialog">
+      <form id="settingsForm" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <span>Integração com o Google</span>
+            <strong>Configurar acesso</strong>
+          </div>
+          <button id="closeSettingsButton" class="icon-button" type="button" aria-label="Fechar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>
+          </button>
+        </div>
+        <div class="settings-body">
+          <p>Insira o Client ID do tipo <strong>Aplicativo da Web</strong> criado no Google Cloud.</p>
+          <label>
+            <span>Google OAuth Client ID</span>
+            <input id="clientIdInput" type="text" placeholder="000000000000-abc...apps.googleusercontent.com" spellcheck="false" />
+          </label>
+          <p class="field-help">O Client ID é público e ficará salvo apenas neste navegador. Tokens e checklist não são armazenados.</p>
+          <button class="primary-button" type="submit">Salvar configuração</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="resultTemplate">
+      <article class="result-card">
+        <div class="pdf-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6V2Zm8 2H8v16h10V8h-4V4Zm1 1.4V7h1.6L15 5.4Z"/></svg>
+          <span>CHECK</span>
+        </div>
+        <div class="result-info">
+          <h3></h3>
+          <div class="result-meta">
+            <span class="result-date"></span>
+            <span class="result-size"></span>
+          </div>
+        </div>
+        <div class="result-actions">
+          <button class="view-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c5.5 0 9.5 5.5 9.5 7s-4 7-9.5 7S2.5 13.5 2.5 12 6.5 5 12 5Zm0 2c-3.6 0-6.5 3.2-7.4 5 .9 1.8 3.8 5 7.4 5s6.5-3.2 7.4-5c-.9-1.8-3.8-5-7.4-5Zm0 1.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Zm0 2a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg>
+            Visualizar
+          </button>
+          <button class="download-button" type="button" aria-label="Baixar checklist" title="Baixar checklist">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
+          </button>
+        </div>
+      </article>
+    </template>
+
+    <div id="toast" class="toast" role="alert"></div>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
