@@ -14,6 +14,7 @@ const elements = {
   userActions: document.querySelector("#userActions"),
   setupNotice: document.querySelector("#setupNotice"),
   loginButton: document.querySelector("#loginButton"),
+  loginSettingsButton: document.querySelector("#loginSettingsButton"),
   logoutButton: document.querySelector("#logoutButton"),
   settingsButton: document.querySelector("#settingsButton"),
   openSetupButton: document.querySelector("#openSetupButton"),
@@ -392,6 +393,7 @@ function showToast(message) {
 }
 
 elements.loginButton.addEventListener("click", requestLogin);
+elements.loginSettingsButton.addEventListener("click", openSettings);
 elements.logoutButton.addEventListener("click", logout);
 elements.settingsButton.addEventListener("click", openSettings);
 elements.openSetupButton.addEventListener("click", openSettings);
