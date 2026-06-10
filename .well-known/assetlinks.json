@@ -1,0 +1,12 @@
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.andersongomes.cicom14checklistvtr",
+      "sha256_cert_fingerprints": [
+        "63:F8:68:38:AE:BF:6E:74:02:CC:99:66:0E:90:F3:6F:DB:C7:ED:71:98:E0:8B:B1:64:7D:A4:92:BF:0D:51:A5"
+      ]
+    }
+  }
