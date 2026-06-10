@@ -1,4 +1,4 @@
-const CACHE_NAME = "checklist-vtr-v15";
+const CACHE_NAME = "checklist-vtr-v16";
 const APP_SHELL = [
   "./",
   "./index.html",

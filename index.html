@@ -21,11 +21,11 @@
             <span>VTR <strong>CHECKLIST</strong></span>
           </span>
         </a>
-        <div id="userActions" class="user-actions hidden">
+        <div id="userActions" class="user-actions">
           <button id="settingsButton" class="icon-button" type="button" aria-label="Configurações" title="Configurações">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19.1 13 .1-1-.1-1 2.1-1.6-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.6 3h-4L10 6a8 8 0 0 0-1.7 1L5.8 6 3.8 9.4 5.9 11l-.1 1 .1 1-2.1 1.6 2 3.4 2.5-1a8 8 0 0 0 1.7 1l.5 3h4l.5-3a8 8 0 0 0 1.7-1l2.5 1 2-3.4L19.1 13ZM12.5 15.5A3.5 3.5 0 1 1 12.5 8a3.5 3.5 0 0 1 0 7.5Z"/></svg>
           </button>
-          <button id="logoutButton" class="text-button" type="button">Sair</button>
+          <button id="logoutButton" class="text-button hidden" type="button">Sair</button>
         </div>
       </header>
 
@@ -39,12 +39,6 @@
             <h1>Encontre os checklist<br />de suas VTR.</h1>
             <p class="subtitle">Pesquise por VTR ou data, visualize e baixe os arquivos diretamente no celular.</p>
 
-            <div id="setupNotice" class="setup-notice hidden">
-              <strong>Configuração necessária</strong>
-              <span>Informe o Client ID OAuth do Google antes de entrar.</span>
-              <button id="openSetupButton" type="button">Configurar agora</button>
-            </div>
-
             <button id="loginButton" class="google-button" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.9h5.4a4.6 4.6 0 0 1-2 3v2.5h3.3c1.9-1.8 2.9-4.4 2.9-7.4Z"/>
@@ -54,9 +48,7 @@
               </svg>
               Entrar com suas credenciais
             </button>
-            <button id="loginSettingsButton" class="login-settings-button" type="button">
-              Configurar acesso
-            </button>
+            <p class="authorized-account">Conta autorizada: <strong id="authorizedAccountLabel"></strong></p>
           </div>
         </section>
 
@@ -137,25 +129,38 @@
     </dialog>
 
     <dialog id="settingsDialog" class="settings-dialog">
-      <form id="settingsForm" method="dialog">
-        <div class="dialog-header">
-          <div>
-            <span>Integração com o Google</span>
-            <strong>Configurar acesso</strong>
-          </div>
-          <button id="closeSettingsButton" class="icon-button" type="button" aria-label="Fechar">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>
-          </button>
+      <div class="dialog-header">
+        <div>
+          <span>Acesso administrativo</span>
+          <strong>Configurações</strong>
         </div>
-        <div class="settings-body">
-          <p>Insira o Client ID do tipo <strong>Aplicativo da Web</strong> criado no Google Cloud.</p>
-          <label>
-            <span>Google OAuth Client ID</span>
-            <input id="clientIdInput" type="text" placeholder="000000000000-abc...apps.googleusercontent.com" spellcheck="false" />
-          </label>
-          <p class="field-help">O Client ID e a autorização ficam salvos apenas neste aparelho. Os checklist não são armazenados pelo aplicativo.</p>
-          <button class="primary-button" type="submit">Salvar configuração</button>
-        </div>
+        <button id="closeSettingsButton" class="icon-button" type="button" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>
+        </button>
+      </div>
+
+      <form id="adminUnlockForm" class="settings-body">
+        <p>Informe a senha administrativa para alterar o acesso ao Gmail.</p>
+        <label>
+          <span>Senha administrativa</span>
+          <input id="adminPasswordInput" type="password" autocomplete="current-password" required />
+        </label>
+        <p id="adminPasswordError" class="field-error hidden">Senha administrativa incorreta.</p>
+        <button class="primary-button" type="submit">Desbloquear configurações</button>
+      </form>
+
+      <form id="settingsForm" class="settings-body hidden">
+        <p>Somente o administrador pode alterar estas informações.</p>
+        <label>
+          <span>E-mail autorizado</span>
+          <input id="authorizedEmailInput" type="email" autocomplete="off" required />
+        </label>
+        <label>
+          <span>Google OAuth Client ID</span>
+          <input id="clientIdInput" type="text" spellcheck="false" required />
+        </label>
+        <p class="field-help">Alterar esses dados encerrará a sessão atual. A senha do Gmail nunca é armazenada pelo aplicativo.</p>
+        <button class="primary-button" type="submit">Salvar configuração</button>
       </form>
     </dialog>
 

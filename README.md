@@ -8,6 +8,9 @@ PWA mobile para pesquisar, visualizar e baixar checklist das VTR armazenados no 
 - Sem Firebase, Supabase ou storage externo.
 - Login pelo Google Identity Services.
 - Leitura direta pela Gmail API com o escopo somente leitura.
+- Client ID e conta autorizada definidos previamente no aplicativo.
+- Alteração dessas configurações protegida por senha administrativa.
+- Contas Google diferentes da conta autorizada são recusadas após o login.
 - Sessão lembrada neste aparelho até o usuário tocar em **Sair**.
 - Access token armazenado localmente apenas durante sua validade e renovado pelo Google quando necessário.
 - Visualização interna feita pelo PDF.js, sem enviar os documentos a serviços externos.
@@ -24,7 +27,9 @@ PWA mobile para pesquisar, visualizar e baixar checklist das VTR armazenados no 
 7. Em **Origens JavaScript autorizadas**, adicione a origem em que o app será servido, por exemplo:
    - `http://localhost:8080` para desenvolvimento.
    - `https://seu-dominio.example` para uso no celular.
-8. Abra o app, toque em **Configurar agora** e informe o Client ID terminado em `.apps.googleusercontent.com`.
+8. O Client ID e o e-mail autorizado já vêm configurados. Para alterá-los, abra o botão de engrenagem e informe a senha administrativa.
+
+A senha da conta Google não é armazenada no aplicativo. Quando necessária, ela deve ser informada somente na página oficial de autenticação do Google.
 
 O escopo `gmail.readonly` é classificado pelo Google como restrito. Para uso privado em modo de teste, mantenha as contas autorizadas na lista de usuários de teste. Uma publicação ampla pode exigir verificação do Google.
 

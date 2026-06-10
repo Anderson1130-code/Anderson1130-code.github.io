@@ -261,24 +261,20 @@ h1 {
   transform: translateY(-1px);
 }
 
-.login-settings-button {
-  margin: 0.8rem auto 0;
-  padding: 0.45rem 0.8rem;
-  color: var(--blue);
-  border: 0;
-  border-radius: 0.55rem;
-  background: transparent;
-  font-weight: 750;
-}
-
-.login-settings-button:hover {
-  background: var(--blue-light);
-}
-
 .google-button svg {
   padding: 0.15rem;
   background: white;
   border-radius: 50%;
+}
+
+.authorized-account {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  font-size: 0.73rem;
+}
+
+.authorized-account strong {
+  color: var(--navy);
 }
 
 .setup-notice {
@@ -648,6 +644,10 @@ dialog::backdrop {
   padding: 1.25rem;
 }
 
+.settings-body + .settings-body {
+  border-top: 1px solid var(--line);
+}
+
 .settings-body > p {
   margin: 0 0 1rem;
   color: var(--muted);
@@ -659,6 +659,18 @@ dialog::backdrop {
   border: 1px solid var(--line);
   border-radius: 0.65rem;
   background: #fbfcfe;
+}
+
+.settings-body label + label {
+  display: block;
+  margin-top: 1rem;
+}
+
+.field-error {
+  margin: 0.5rem 0 1rem !important;
+  color: var(--danger) !important;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .settings-body input:focus {

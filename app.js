@@ -1,6 +1,10 @@
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
+const DEFAULT_CLIENT_ID = "325522605751-ifnqm5s29vd4k31mn21vrnqols5e0866.apps.googleusercontent.com";
+const DEFAULT_AUTHORIZED_EMAIL = "cheklistcicom@gmail.com";
+const ADMIN_PASSWORD_HASH = "8d9e98c047d58a294148dbf14d911c451e13b47aba079b53573f44a6a0d4bcde";
 const CLIENT_ID_KEY = "vtr-pdf-google-client-id";
+const AUTHORIZED_EMAIL_KEY = "checklist-vtr-authorized-email";
 const AUTH_REMEMBER_KEY = "checklist-vtr-authenticated";
 const AUTH_TOKEN_KEY = "checklist-vtr-access-token";
 const AUTH_EXPIRY_KEY = "checklist-vtr-token-expiry";
@@ -15,13 +19,10 @@ const state = {
 const elements = {
   loginView: document.querySelector("#loginView"),
   searchView: document.querySelector("#searchView"),
-  userActions: document.querySelector("#userActions"),
-  setupNotice: document.querySelector("#setupNotice"),
   loginButton: document.querySelector("#loginButton"),
-  loginSettingsButton: document.querySelector("#loginSettingsButton"),
   logoutButton: document.querySelector("#logoutButton"),
   settingsButton: document.querySelector("#settingsButton"),
-  openSetupButton: document.querySelector("#openSetupButton"),
+  authorizedAccountLabel: document.querySelector("#authorizedAccountLabel"),
   searchForm: document.querySelector("#searchForm"),
   searchButton: document.querySelector("#searchButton"),
   vtrInput: document.querySelector("#vtrInput"),
@@ -36,14 +37,22 @@ const elements = {
   pdfViewer: document.querySelector("#pdfViewer"),
   closePdfButton: document.querySelector("#closePdfButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
+  adminUnlockForm: document.querySelector("#adminUnlockForm"),
+  adminPasswordInput: document.querySelector("#adminPasswordInput"),
+  adminPasswordError: document.querySelector("#adminPasswordError"),
   settingsForm: document.querySelector("#settingsForm"),
   clientIdInput: document.querySelector("#clientIdInput"),
+  authorizedEmailInput: document.querySelector("#authorizedEmailInput"),
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
   toast: document.querySelector("#toast"),
 };
 
 function getClientId() {
-  return localStorage.getItem(CLIENT_ID_KEY)?.trim() || "";
+  return localStorage.getItem(CLIENT_ID_KEY)?.trim() || DEFAULT_CLIENT_ID;
+}
+
+function getAuthorizedEmail() {
+  return localStorage.getItem(AUTHORIZED_EMAIL_KEY)?.trim().toLowerCase() || DEFAULT_AUTHORIZED_EMAIL;
 }
 
 function initializeTokenClient() {
@@ -53,6 +62,7 @@ function initializeTokenClient() {
   state.tokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: clientId,
     scope: GMAIL_SCOPE,
+    hint: getAuthorizedEmail(),
     callback: handleTokenResponse,
     error_callback: (error) => {
       console.error(error);
@@ -62,9 +72,30 @@ function initializeTokenClient() {
   return true;
 }
 
-function handleTokenResponse(response) {
+async function getProfileEmail(accessToken) {
+  const response = await fetch(`${GMAIL_API}/profile`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  }).catch(() => null);
+  if (!response?.ok) return "";
+  const profile = await response.json().catch(() => null);
+  return profile?.emailAddress?.trim().toLowerCase() || "";
+}
+
+async function handleTokenResponse(response) {
   if (response.error) {
     showToast("Acesso ao Gmail não autorizado.");
+    return;
+  }
+
+  const authorizedEmail = getAuthorizedEmail();
+  const profileEmail = await getProfileEmail(response.access_token);
+
+  if (profileEmail !== authorizedEmail) {
+    if (window.google?.accounts?.oauth2) {
+      google.accounts.oauth2.revoke(response.access_token, () => {});
+    }
+    showLoginView();
+    showToast(`Acesso permitido somente para ${authorizedEmail}.`);
     return;
   }
 
@@ -87,13 +118,6 @@ function handleTokenResponse(response) {
 }
 
 function requestGoogleAccess(prompt = "consent") {
-  const clientId = getClientId();
-  if (!clientId) {
-    elements.setupNotice.classList.remove("hidden");
-    openSettings();
-    return false;
-  }
-
   if (!state.tokenClient && !initializeTokenClient()) {
     showToast("O login do Google ainda está carregando. Tente novamente.");
     return false;
@@ -107,13 +131,21 @@ function requestLogin() {
   requestGoogleAccess("consent");
 }
 
-function restoreSession() {
+async function restoreSession() {
   const remembered = localStorage.getItem(AUTH_REMEMBER_KEY) === "true";
   const storedToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
   const expiry = Number(localStorage.getItem(AUTH_EXPIRY_KEY) || 0);
 
   if (storedToken && expiry > Date.now()) {
-    state.accessToken = storedToken;
+    const profileEmail = await getProfileEmail(storedToken);
+    if (profileEmail === getAuthorizedEmail()) {
+      state.accessToken = storedToken;
+    } else {
+      clearStoredToken();
+      localStorage.removeItem(AUTH_REMEMBER_KEY);
+      showLoginView();
+      return;
+    }
   } else {
     clearStoredToken();
   }
@@ -130,14 +162,14 @@ function clearStoredToken() {
 function showSearchView() {
   elements.loginView.classList.add("hidden");
   elements.searchView.classList.remove("hidden");
-  elements.userActions.classList.remove("hidden");
+  elements.logoutButton.classList.remove("hidden");
   elements.vtrInput.focus();
 }
 
 function showLoginView() {
   elements.searchView.classList.add("hidden");
   elements.loginView.classList.remove("hidden");
-  elements.userActions.classList.add("hidden");
+  elements.logoutButton.classList.add("hidden");
   clearResults();
 }
 
@@ -155,25 +187,66 @@ function logout() {
 }
 
 function openSettings() {
+  elements.adminUnlockForm.classList.remove("hidden");
+  elements.settingsForm.classList.add("hidden");
+  elements.adminPasswordError.classList.add("hidden");
+  elements.adminPasswordInput.value = "";
   elements.clientIdInput.value = getClientId();
+  elements.authorizedEmailInput.value = getAuthorizedEmail();
   elements.settingsDialog.showModal();
-  setTimeout(() => elements.clientIdInput.focus(), 50);
+  setTimeout(() => elements.adminPasswordInput.focus(), 50);
+}
+
+async function hashText(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function unlockSettings(event) {
+  event.preventDefault();
+  const passwordHash = await hashText(elements.adminPasswordInput.value);
+
+  if (passwordHash !== ADMIN_PASSWORD_HASH) {
+    elements.adminPasswordError.classList.remove("hidden");
+    elements.adminPasswordInput.select();
+    return;
+  }
+
+  elements.adminPasswordError.classList.add("hidden");
+  elements.adminUnlockForm.classList.add("hidden");
+  elements.settingsForm.classList.remove("hidden");
+  setTimeout(() => elements.authorizedEmailInput.focus(), 50);
 }
 
 function saveSettings(event) {
   event.preventDefault();
   const clientId = elements.clientIdInput.value.trim();
+  const authorizedEmail = elements.authorizedEmailInput.value.trim().toLowerCase();
 
   if (!clientId.endsWith(".apps.googleusercontent.com")) {
     showToast("Informe um Client ID válido do Google.");
     return;
   }
 
+  if (!authorizedEmail || !elements.authorizedEmailInput.checkValidity()) {
+    showToast("Informe um e-mail autorizado válido.");
+    return;
+  }
+
+  const previousToken = state.accessToken;
   localStorage.setItem(CLIENT_ID_KEY, clientId);
+  localStorage.setItem(AUTHORIZED_EMAIL_KEY, authorizedEmail);
+  clearStoredToken();
+  localStorage.removeItem(AUTH_REMEMBER_KEY);
   state.tokenClient = null;
   initializeTokenClient();
-  elements.setupNotice.classList.add("hidden");
+  elements.authorizedAccountLabel.textContent = authorizedEmail;
   elements.settingsDialog.close();
+  showLoginView();
+  if (previousToken && window.google?.accounts?.oauth2) {
+    google.accounts.oauth2.revoke(previousToken, () => {});
+  }
   showToast("Configuração salva.");
 }
 
@@ -472,11 +545,10 @@ function showToast(message) {
 }
 
 elements.loginButton.addEventListener("click", requestLogin);
-elements.loginSettingsButton.addEventListener("click", openSettings);
 elements.logoutButton.addEventListener("click", logout);
 elements.settingsButton.addEventListener("click", openSettings);
-elements.openSetupButton.addEventListener("click", openSettings);
 elements.searchForm.addEventListener("submit", handleSearch);
+elements.adminUnlockForm.addEventListener("submit", unlockSettings);
 elements.settingsForm.addEventListener("submit", saveSettings);
 elements.closeSettingsButton.addEventListener("click", () => elements.settingsDialog.close());
 elements.closePdfButton.addEventListener("click", closePdf);
@@ -485,7 +557,8 @@ elements.pdfDialog.addEventListener("close", () => {
 });
 
 window.addEventListener("load", () => {
-  if (getClientId()) initializeTokenClient();
+  elements.authorizedAccountLabel.textContent = getAuthorizedEmail();
+  initializeTokenClient();
   restoreSession();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(console.error);
