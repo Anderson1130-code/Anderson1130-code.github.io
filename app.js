@@ -1,11 +1,15 @@
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const CLIENT_ID_KEY = "vtr-pdf-google-client-id";
+const AUTH_REMEMBER_KEY = "checklist-vtr-authenticated";
+const AUTH_TOKEN_KEY = "checklist-vtr-access-token";
+const AUTH_EXPIRY_KEY = "checklist-vtr-token-expiry";
 
 const state = {
   accessToken: "",
   tokenClient: null,
-  currentObjectUrl: "",
+  pendingSearch: null,
+  pdfRenderId: 0,
 };
 
 const elements = {
@@ -29,7 +33,7 @@ const elements = {
   resultTemplate: document.querySelector("#resultTemplate"),
   pdfDialog: document.querySelector("#pdfDialog"),
   pdfTitle: document.querySelector("#pdfTitle"),
-  pdfFrame: document.querySelector("#pdfFrame"),
+  pdfViewer: document.querySelector("#pdfViewer"),
   closePdfButton: document.querySelector("#closePdfButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
   settingsForm: document.querySelector("#settingsForm"),
@@ -65,24 +69,62 @@ function handleTokenResponse(response) {
   }
 
   state.accessToken = response.access_token;
+  localStorage.setItem(AUTH_REMEMBER_KEY, "true");
+  localStorage.setItem(AUTH_TOKEN_KEY, response.access_token);
+  localStorage.setItem(
+    AUTH_EXPIRY_KEY,
+    String(Date.now() + Math.max(60, Number(response.expires_in) || 3600) * 1000 - 60000)
+  );
   showSearchView();
-  showToast("Gmail conectado com sucesso.");
+
+  if (state.pendingSearch) {
+    const pendingSearch = state.pendingSearch;
+    state.pendingSearch = null;
+    executeSearch(pendingSearch.vtr, pendingSearch.date);
+  } else {
+    showToast("Gmail conectado com sucesso.");
+  }
 }
 
-function requestLogin() {
+function requestGoogleAccess(prompt = "consent") {
   const clientId = getClientId();
   if (!clientId) {
     elements.setupNotice.classList.remove("hidden");
     openSettings();
-    return;
+    return false;
   }
 
   if (!state.tokenClient && !initializeTokenClient()) {
     showToast("O login do Google ainda está carregando. Tente novamente.");
-    return;
+    return false;
   }
 
-  state.tokenClient.requestAccessToken({ prompt: "consent" });
+  state.tokenClient.requestAccessToken({ prompt });
+  return true;
+}
+
+function requestLogin() {
+  requestGoogleAccess("consent");
+}
+
+function restoreSession() {
+  const remembered = localStorage.getItem(AUTH_REMEMBER_KEY) === "true";
+  const storedToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
+  const expiry = Number(localStorage.getItem(AUTH_EXPIRY_KEY) || 0);
+
+  if (storedToken && expiry > Date.now()) {
+    state.accessToken = storedToken;
+  } else {
+    clearStoredToken();
+  }
+
+  if (remembered) showSearchView();
+}
+
+function clearStoredToken() {
+  state.accessToken = "";
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_EXPIRY_KEY);
 }
 
 function showSearchView() {
@@ -101,7 +143,9 @@ function showLoginView() {
 
 function logout() {
   const token = state.accessToken;
-  state.accessToken = "";
+  clearStoredToken();
+  localStorage.removeItem(AUTH_REMEMBER_KEY);
+  state.pendingSearch = null;
 
   if (token && window.google?.accounts?.oauth2) {
     google.accounts.oauth2.revoke(token, () => showToast("Sessão encerrada."));
@@ -159,7 +203,7 @@ async function gmailFetch(path) {
   });
 
   if (response.status === 401) {
-    state.accessToken = "";
+    clearStoredToken();
     throw new Error("SESSION_EXPIRED");
   }
 
@@ -265,18 +309,30 @@ async function handleSearch(event) {
     return;
   }
 
+  if (!state.accessToken) {
+    state.pendingSearch = { vtr, date };
+    setStatus("Renovando o acesso ao Gmail...");
+    if (!requestGoogleAccess("")) {
+      state.pendingSearch = null;
+      setStatus("Não foi possível renovar o acesso. Verifique a configuração.", true);
+    }
+    return;
+  }
+
+  executeSearch(vtr, date);
+}
+
+async function executeSearch(vtr, date) {
   setLoading(true);
   clearResults();
   setStatus("Buscando checklist...");
-
   try {
     const results = await searchGmail(vtr, date);
     renderResults(results);
   } catch (error) {
     console.error(error);
     if (error.message === "SESSION_EXPIRED") {
-      setStatus("Sua sessão expirou. Entre novamente para continuar.", true);
-      setTimeout(showLoginView, 1200);
+      setStatus("O acesso ao Gmail expirou. Toque em Pesquisar novamente para renová-lo.", true);
     } else {
       setStatus(error.message || "Não foi possível concluir a pesquisa.", true);
     }
@@ -308,16 +364,46 @@ function renderResults(results) {
 }
 
 async function viewPdf(item) {
+  const renderId = ++state.pdfRenderId;
+  elements.pdfTitle.textContent = item.filename;
+  elements.pdfViewer.innerHTML = '<div class="pdf-loading">Carregando checklist...</div>';
+  elements.pdfDialog.showModal();
+
   try {
-    showToast("Carregando checklist...");
     const blob = await getPdfBlob(item);
-    releaseObjectUrl();
-    state.currentObjectUrl = URL.createObjectURL(blob);
-    elements.pdfTitle.textContent = item.filename;
-    elements.pdfFrame.src = state.currentObjectUrl;
-    elements.pdfDialog.showModal();
+    const pdfjsLib = await import("./pdf.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs";
+    const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
+    elements.pdfViewer.replaceChildren();
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      if (renderId !== state.pdfRenderId) return;
+
+      const page = await pdf.getPage(pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const availableWidth = Math.max(280, elements.pdfViewer.clientWidth - 24);
+      const cssScale = Math.min(1.6, availableWidth / baseViewport.width);
+      const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+      const renderViewport = page.getViewport({ scale: cssScale * outputScale });
+      const canvas = document.createElement("canvas");
+      const pageElement = document.createElement("div");
+      const context = canvas.getContext("2d", { alpha: false });
+
+      canvas.width = Math.floor(renderViewport.width);
+      canvas.height = Math.floor(renderViewport.height);
+      canvas.style.width = `${Math.floor(baseViewport.width * cssScale)}px`;
+      canvas.style.height = `${Math.floor(baseViewport.height * cssScale)}px`;
+      pageElement.className = "pdf-page";
+      pageElement.append(canvas);
+      elements.pdfViewer.append(pageElement);
+
+      await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+    }
   } catch (error) {
     console.error(error);
+    if (renderId === state.pdfRenderId) {
+      elements.pdfViewer.innerHTML = '<div class="pdf-loading">Não foi possível exibir este checklist.</div>';
+    }
     showToast("Não foi possível abrir este checklist.");
   }
 }
@@ -342,16 +428,9 @@ async function downloadPdf(item) {
 }
 
 function closePdf() {
+  state.pdfRenderId += 1;
   elements.pdfDialog.close();
-  elements.pdfFrame.src = "about:blank";
-  releaseObjectUrl();
-}
-
-function releaseObjectUrl() {
-  if (state.currentObjectUrl) {
-    URL.revokeObjectURL(state.currentObjectUrl);
-    state.currentObjectUrl = "";
-  }
+  elements.pdfViewer.innerHTML = '<div class="pdf-loading">Carregando checklist...</div>';
 }
 
 function formatDate(timestamp) {
@@ -401,10 +480,13 @@ elements.searchForm.addEventListener("submit", handleSearch);
 elements.settingsForm.addEventListener("submit", saveSettings);
 elements.closeSettingsButton.addEventListener("click", () => elements.settingsDialog.close());
 elements.closePdfButton.addEventListener("click", closePdf);
-elements.pdfDialog.addEventListener("close", releaseObjectUrl);
+elements.pdfDialog.addEventListener("close", () => {
+  state.pdfRenderId += 1;
+});
 
 window.addEventListener("load", () => {
   if (getClientId()) initializeTokenClient();
+  restoreSession();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(console.error);
   }

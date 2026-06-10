@@ -8,7 +8,9 @@ PWA mobile para pesquisar, visualizar e baixar checklist das VTR armazenados no 
 - Sem Firebase, Supabase ou storage externo.
 - Login pelo Google Identity Services.
 - Leitura direta pela Gmail API com o escopo somente leitura.
-- Access token mantido apenas em memória.
+- Sessão lembrada neste aparelho até o usuário tocar em **Sair**.
+- Access token armazenado localmente apenas durante sua validade e renovado pelo Google quando necessário.
+- Visualização interna feita pelo PDF.js, sem enviar os documentos a serviços externos.
 - Checklist baixados sob demanda e não persistidos pelo app.
 
 ## Configuração do Google Cloud
