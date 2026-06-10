@@ -5,7 +5,6 @@ const CLIENT_ID_KEY = "vtr-pdf-google-client-id";
 const state = {
   accessToken: "",
   tokenClient: null,
-  demoMode: false,
   currentObjectUrl: "",
 };
 
@@ -15,7 +14,6 @@ const elements = {
   userActions: document.querySelector("#userActions"),
   setupNotice: document.querySelector("#setupNotice"),
   loginButton: document.querySelector("#loginButton"),
-  demoButton: document.querySelector("#demoButton"),
   logoutButton: document.querySelector("#logoutButton"),
   settingsButton: document.querySelector("#settingsButton"),
   openSetupButton: document.querySelector("#openSetupButton"),
@@ -66,7 +64,6 @@ function handleTokenResponse(response) {
   }
 
   state.accessToken = response.access_token;
-  state.demoMode = false;
   showSearchView();
   showToast("Gmail conectado com sucesso.");
 }
@@ -104,7 +101,6 @@ function showLoginView() {
 function logout() {
   const token = state.accessToken;
   state.accessToken = "";
-  state.demoMode = false;
 
   if (token && window.google?.accounts?.oauth2) {
     google.accounts.oauth2.revoke(token, () => showToast("Sessão encerrada."));
@@ -235,10 +231,6 @@ async function mapWithConcurrency(items, limit, worker) {
 }
 
 async function getPdfBlob(item) {
-  if (item.isDemo) {
-    return createDemoPdf(item.filename);
-  }
-
   let encodedData = item.inlineData;
   if (!encodedData) {
     const response = await gmailFetch(`/messages/${item.messageId}/attachments/${item.attachmentId}`);
@@ -261,47 +253,6 @@ function decodeBase64Url(value) {
   return bytes;
 }
 
-function createDemoPdf(filename) {
-  const safeTitle = filename.replace(/[()\\]/g, "").slice(0, 60);
-  const stream = [
-    "BT",
-    "/F1 22 Tf",
-    "72 740 Td",
-    "(Checklist VTR - Demonstracao) Tj",
-    "/F1 12 Tf",
-    "0 -42 Td",
-    `(${safeTitle}) Tj`,
-    "0 -28 Td",
-    "(Este arquivo confirma o funcionamento da visualizacao.) Tj",
-    "ET",
-  ].join("\n");
-
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-  ];
-
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  objects.forEach((object, index) => {
-    offsets.push(pdf.length);
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  });
-
-  const xrefOffset = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += "0000000000 65535 f \n";
-  offsets.slice(1).forEach((offset) => {
-    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
-  });
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-
-  return new Blob([pdf], { type: "application/pdf" });
-}
-
 async function handleSearch(event) {
   event.preventDefault();
   const vtr = elements.vtrInput.value.trim();
@@ -318,7 +269,7 @@ async function handleSearch(event) {
   setStatus("Buscando checklist...");
 
   try {
-    const results = state.demoMode ? getDemoResults(vtr, date) : await searchGmail(vtr, date);
+    const results = await searchGmail(vtr, date);
     renderResults(results);
   } catch (error) {
     console.error(error);
@@ -402,39 +353,11 @@ function releaseObjectUrl() {
   }
 }
 
-function getDemoResults(vtr, date) {
-  const baseDate = date ? new Date(`${date}T14:30:00`).getTime() : Date.now();
-  const code = vtr || "25-1005";
-  return [
-    {
-      id: "demo-1",
-      filename: `${code.replace(/\s+/g, "-")}-relatorio.pdf`,
-      size: 248000,
-      timestamp: baseDate,
-      isDemo: true,
-    },
-    {
-      id: "demo-2",
-      filename: `${code.replace(/\s+/g, "-")}-comprovante.pdf`,
-      size: 109000,
-      timestamp: baseDate - 3600000,
-      isDemo: true,
-    },
-  ];
-}
-
 function formatDate(timestamp) {
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(timestamp));
-}
-
-function formatDateInput(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function formatBytes(bytes) {
@@ -468,16 +391,7 @@ function showToast(message) {
   toastTimer = setTimeout(() => elements.toast.classList.remove("visible"), 2600);
 }
 
-function startDemo() {
-  state.demoMode = true;
-  showSearchView();
-  elements.vtrInput.value = "25-1005";
-  elements.dateInput.value = formatDateInput(new Date());
-  renderResults(getDemoResults(elements.vtrInput.value, elements.dateInput.value));
-}
-
 elements.loginButton.addEventListener("click", requestLogin);
-elements.demoButton.addEventListener("click", startDemo);
 elements.logoutButton.addEventListener("click", logout);
 elements.settingsButton.addEventListener("click", openSettings);
 elements.openSetupButton.addEventListener("click", openSettings);
@@ -491,8 +405,5 @@ window.addEventListener("load", () => {
   if (getClientId()) initializeTokenClient();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(console.error);
-  }
-  if (new URLSearchParams(window.location.search).get("demo") === "1") {
-    startDemo();
   }
 });

@@ -228,8 +228,7 @@ h1 {
   line-height: 1.7;
 }
 
-.google-button,
-.demo-button {
+.google-button {
   width: min(100%, 22rem);
   min-height: 3.35rem;
   margin-inline: auto;
@@ -257,17 +256,6 @@ h1 {
   padding: 0.15rem;
   background: white;
   border-radius: 50%;
-}
-
-.demo-button {
-  min-height: 2.7rem;
-  color: var(--blue);
-  border: 0;
-  background: transparent;
-}
-
-.demo-button:hover {
-  text-decoration: underline;
 }
 
 .setup-notice {
@@ -727,8 +715,7 @@ dialog::backdrop {
     font-size: 0.94rem;
   }
 
-  .google-button,
-  .demo-button {
+  .google-button {
     width: 100%;
     max-width: 22rem;
   }
