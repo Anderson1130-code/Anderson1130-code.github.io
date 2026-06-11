@@ -448,6 +448,34 @@ button:disabled {
   font-weight: 800;
 }
 
+.result-badges {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.new-count,
+.new-label {
+  color: #704d00;
+  border: 1px solid #f0cb5b;
+  background: #fff3b8;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.new-count {
+  padding: 0.38rem 0.62rem;
+  font-size: 0.72rem;
+}
+
+.new-label {
+  flex: 0 0 auto;
+  padding: 0.16rem 0.4rem;
+  font-size: 0.55rem;
+  letter-spacing: 0.05em;
+}
+
 .results-list {
   display: grid;
   gap: 0.75rem;
@@ -469,6 +497,11 @@ button:disabled {
   border-color: var(--gold);
   box-shadow: 0 8px 24px rgba(24, 49, 83, 0.08);
   transform: translateY(-1px);
+}
+
+.result-card.is-new {
+  border-color: #e9c54c;
+  background: linear-gradient(90deg, #fffdf2, var(--surface) 35%);
 }
 
 .pdf-icon {
@@ -500,8 +533,18 @@ button:disabled {
   min-width: 0;
 }
 
+.result-title {
+  min-width: 0;
+  margin-bottom: 0.45rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .result-info h3 {
-  margin: 0 0 0.45rem;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   color: var(--navy-dark);
   font-size: 0.96rem;
   white-space: nowrap;
@@ -857,6 +900,15 @@ dialog::backdrop {
     min-width: 0;
     overflow: hidden;
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .results-header {
+    align-items: center;
+  }
+
+  .result-badges {
+    max-width: 47%;
+    flex-wrap: wrap;
   }
 
   .result-actions {

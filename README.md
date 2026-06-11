@@ -14,6 +14,12 @@ PWA mobile para pesquisar, visualizar e baixar checklist das VTR armazenados no 
 - Sessão lembrada neste aparelho até o usuário tocar em **Sair**.
 - Access token armazenado localmente apenas durante sua validade e renovado pelo Google quando necessário.
 - Visualização interna feita pelo PDF.js, sem enviar os documentos a serviços externos.
+- Checklist ainda não visualizados ou baixados recebem o selo **NOVO**.
+- O contador de novos é mantido localmente e separado por conta autorizada.
+- Mensagens específicas orientam sobre internet, sessão, Gmail e anexos inválidos.
+- Ao visualizar ou baixar, o checklist é reorganizado automaticamente no Modelo 3.
+- A galeria fotográfica aceita zero, uma ou várias imagens e cria páginas adicionais quando necessário.
+- O PDF original permanece inalterado no Gmail.
 - Checklist baixados sob demanda e não persistidos pelo app.
 
 ## Configuração do Google Cloud

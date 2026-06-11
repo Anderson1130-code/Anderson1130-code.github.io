@@ -8,12 +8,15 @@ const AUTHORIZED_EMAIL_KEY = "checklist-vtr-authorized-email";
 const AUTH_REMEMBER_KEY = "checklist-vtr-authenticated";
 const AUTH_TOKEN_KEY = "checklist-vtr-access-token";
 const AUTH_EXPIRY_KEY = "checklist-vtr-token-expiry";
+const SEEN_ITEMS_KEY = "checklist-vtr-seen-items";
 
 const state = {
   accessToken: "",
   tokenClient: null,
   pendingSearch: null,
   pdfRenderId: 0,
+  renderedItems: new Map(),
+  treatedPdfCache: new Map(),
 };
 
 const elements = {
@@ -30,6 +33,7 @@ const elements = {
   statusMessage: document.querySelector("#statusMessage"),
   resultsHeader: document.querySelector("#resultsHeader"),
   resultCount: document.querySelector("#resultCount"),
+  newCount: document.querySelector("#newCount"),
   resultsList: document.querySelector("#resultsList"),
   resultTemplate: document.querySelector("#resultTemplate"),
   pdfDialog: document.querySelector("#pdfDialog"),
@@ -73,10 +77,15 @@ function initializeTokenClient() {
 }
 
 async function getProfileEmail(accessToken) {
-  const response = await fetch(`${GMAIL_API}/profile`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  }).catch(() => null);
-  if (!response?.ok) return "";
+  let response;
+  try {
+    response = await fetch(`${GMAIL_API}/profile`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch {
+    throw new Error("NETWORK_ERROR");
+  }
+  if (!response.ok) return "";
   const profile = await response.json().catch(() => null);
   return profile?.emailAddress?.trim().toLowerCase() || "";
 }
@@ -88,7 +97,13 @@ async function handleTokenResponse(response) {
   }
 
   const authorizedEmail = getAuthorizedEmail();
-  const profileEmail = await getProfileEmail(response.access_token);
+  let profileEmail;
+  try {
+    profileEmail = await getProfileEmail(response.access_token);
+  } catch (error) {
+    showToast(getErrorMessage(error, "Não foi possível validar a conta."));
+    return;
+  }
 
   if (profileEmail !== authorizedEmail) {
     if (window.google?.accounts?.oauth2) {
@@ -137,7 +152,14 @@ async function restoreSession() {
   const expiry = Number(localStorage.getItem(AUTH_EXPIRY_KEY) || 0);
 
   if (storedToken && expiry > Date.now()) {
-    const profileEmail = await getProfileEmail(storedToken);
+    let profileEmail;
+    try {
+      profileEmail = await getProfileEmail(storedToken);
+    } catch {
+      state.accessToken = storedToken;
+      if (remembered) showSearchView();
+      return;
+    }
     if (profileEmail === getAuthorizedEmail()) {
       state.accessToken = storedToken;
     } else {
@@ -178,6 +200,7 @@ function logout() {
   clearStoredToken();
   localStorage.removeItem(AUTH_REMEMBER_KEY);
   state.pendingSearch = null;
+  state.treatedPdfCache.clear();
 
   if (token && window.google?.accounts?.oauth2) {
     google.accounts.oauth2.revoke(token, () => showToast("Sessão encerrada."));
@@ -239,6 +262,7 @@ function saveSettings(event) {
   localStorage.setItem(AUTHORIZED_EMAIL_KEY, authorizedEmail);
   clearStoredToken();
   localStorage.removeItem(AUTH_REMEMBER_KEY);
+  state.treatedPdfCache.clear();
   state.tokenClient = null;
   initializeTokenClient();
   elements.authorizedAccountLabel.textContent = authorizedEmail;
@@ -271,14 +295,27 @@ function buildGmailQuery(vtr, date) {
 }
 
 async function gmailFetch(path) {
-  const response = await fetch(`${GMAIL_API}${path}`, {
-    headers: { Authorization: `Bearer ${state.accessToken}` },
-  });
+  if (!navigator.onLine) throw new Error("OFFLINE");
+
+  let response;
+  try {
+    response = await fetch(`${GMAIL_API}${path}`, {
+      headers: { Authorization: `Bearer ${state.accessToken}` },
+    });
+  } catch {
+    throw new Error("NETWORK_ERROR");
+  }
 
   if (response.status === 401) {
     clearStoredToken();
     throw new Error("SESSION_EXPIRED");
   }
+
+  if (response.status === 400) throw new Error("GMAIL_REQUEST");
+  if (response.status === 403) throw new Error("GMAIL_PERMISSION");
+  if (response.status === 404) throw new Error("ATTACHMENT_NOT_FOUND");
+  if (response.status === 429) throw new Error("GMAIL_LIMIT");
+  if (response.status >= 500) throw new Error("GMAIL_UNAVAILABLE");
 
   if (!response.ok) {
     const details = await response.json().catch(() => ({}));
@@ -356,8 +393,40 @@ async function getPdfBlob(item) {
     encodedData = data.data;
   }
 
-  const bytes = decodeBase64Url(encodedData);
+  if (!encodedData) throw new Error("ATTACHMENT_EMPTY");
+  let bytes;
+  try {
+    bytes = decodeBase64Url(encodedData);
+  } catch {
+    throw new Error("ATTACHMENT_INVALID");
+  }
+  if (!bytes.length) throw new Error("ATTACHMENT_EMPTY");
   return new Blob([bytes], { type: "application/pdf" });
+}
+
+async function getTreatedPdfBlob(item) {
+  if (state.treatedPdfCache.has(item.id)) {
+    return state.treatedPdfCache.get(item.id);
+  }
+
+  const promise = (async () => {
+    const originalBlob = await getPdfBlob(item);
+    const { transformChecklistPdf } = await import("./pdf-transformer.js");
+    return transformChecklistPdf(originalBlob);
+  })();
+
+  state.treatedPdfCache.set(item.id, promise);
+  try {
+    return await promise;
+  } catch (error) {
+    state.treatedPdfCache.delete(item.id);
+    throw error;
+  }
+}
+
+function getTreatedFilename(filename) {
+  const base = filename.replace(/\.pdf$/i, "");
+  return `${base}-modelo-3.pdf`;
 }
 
 function decodeBase64Url(value) {
@@ -404,11 +473,7 @@ async function executeSearch(vtr, date) {
     renderResults(results);
   } catch (error) {
     console.error(error);
-    if (error.message === "SESSION_EXPIRED") {
-      setStatus("O acesso ao Gmail expirou. Toque em Pesquisar novamente para renová-lo.", true);
-    } else {
-      setStatus(error.message || "Não foi possível concluir a pesquisa.", true);
-    }
+    setStatus(getErrorMessage(error, "Não foi possível concluir a pesquisa."), true);
   } finally {
     setLoading(false);
   }
@@ -419,31 +484,43 @@ function renderResults(results) {
   elements.resultsList.replaceChildren();
   elements.resultsHeader.classList.remove("hidden");
   elements.resultCount.textContent = `${results.length} ${results.length === 1 ? "arquivo" : "arquivos"}`;
+  state.renderedItems.clear();
 
   if (!results.length) {
+    updateNewCount(0);
     setStatus("Nenhum checklist foi encontrado para os filtros informados.");
     return;
   }
 
+  const seenItems = getSeenItems();
+  let newItems = 0;
+
   for (const item of results) {
     const card = elements.resultTemplate.content.firstElementChild.cloneNode(true);
+    const isNew = !seenItems.has(item.id);
+    if (isNew) newItems += 1;
+    state.renderedItems.set(item.id, { item, card });
     card.querySelector("h3").textContent = item.filename;
+    card.classList.toggle("is-new", isNew);
+    card.querySelector(".new-label").classList.toggle("hidden", !isNew);
     card.querySelector(".result-date").textContent = formatDate(item.timestamp);
     card.querySelector(".result-size").textContent = formatBytes(item.size);
     card.querySelector(".view-button").addEventListener("click", () => viewPdf(item));
     card.querySelector(".download-button").addEventListener("click", () => downloadPdf(item));
     elements.resultsList.append(card);
   }
+
+  updateNewCount(newItems);
 }
 
 async function viewPdf(item) {
   const renderId = ++state.pdfRenderId;
-  elements.pdfTitle.textContent = item.filename;
-  elements.pdfViewer.innerHTML = '<div class="pdf-loading">Carregando checklist...</div>';
+  elements.pdfTitle.textContent = getTreatedFilename(item.filename);
+  elements.pdfViewer.innerHTML = '<div class="pdf-loading">Organizando checklist no Modelo 3...</div>';
   elements.pdfDialog.showModal();
 
   try {
-    const blob = await getPdfBlob(item);
+    const blob = await getTreatedPdfBlob(item);
     const pdfjsLib = await import("./pdf.mjs");
     pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs";
     const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
@@ -472,32 +549,94 @@ async function viewPdf(item) {
 
       await page.render({ canvasContext: context, viewport: renderViewport }).promise;
     }
+    markItemSeen(item.id);
   } catch (error) {
     console.error(error);
     if (renderId === state.pdfRenderId) {
       elements.pdfViewer.innerHTML = '<div class="pdf-loading">Não foi possível exibir este checklist.</div>';
     }
-    showToast("Não foi possível abrir este checklist.");
+    showToast(getPdfErrorMessage(error));
   }
 }
 
 async function downloadPdf(item) {
   try {
-    showToast("Preparando download...");
-    const blob = await getPdfBlob(item);
+    showToast("Organizando checklist no Modelo 3...");
+    const blob = await getTreatedPdfBlob(item);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = item.filename;
+    link.download = getTreatedFilename(item.filename);
     document.body.append(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
+    markItemSeen(item.id);
     showToast("Download iniciado.");
   } catch (error) {
     console.error(error);
-    showToast("Não foi possível baixar este checklist.");
+    showToast(getErrorMessage(error, "Não foi possível baixar este checklist."));
   }
+}
+
+function getSeenItems() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(getSeenItemsStorageKey()) || "[]");
+    return new Set(Array.isArray(stored) ? stored : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function getSeenItemsStorageKey() {
+  return `${SEEN_ITEMS_KEY}:${getAuthorizedEmail()}`;
+}
+
+function markItemSeen(itemId) {
+  const seenItems = getSeenItems();
+  if (seenItems.has(itemId)) return;
+
+  seenItems.add(itemId);
+  localStorage.setItem(getSeenItemsStorageKey(), JSON.stringify(Array.from(seenItems).slice(-1000)));
+
+  const rendered = state.renderedItems.get(itemId);
+  if (rendered) {
+    rendered.card.classList.remove("is-new");
+    rendered.card.querySelector(".new-label").classList.add("hidden");
+  }
+
+  const remainingNew = Array.from(state.renderedItems.values())
+    .filter(({ card }) => card.classList.contains("is-new")).length;
+  updateNewCount(remainingNew);
+}
+
+function updateNewCount(count) {
+  elements.newCount.textContent = `${count} ${count === 1 ? "novo" : "novos"}`;
+  elements.newCount.classList.toggle("hidden", count === 0);
+}
+
+function getErrorMessage(error, fallback) {
+  const messages = {
+    OFFLINE: "Sem conexão com a internet. Conecte o celular e tente novamente.",
+    NETWORK_ERROR: "Não foi possível acessar a internet. Verifique a conexão e tente novamente.",
+    SESSION_EXPIRED: "O acesso ao Gmail expirou. Toque em Pesquisar novamente para renová-lo.",
+    GMAIL_REQUEST: "O Gmail não conseguiu processar esta solicitação. Revise os filtros e tente novamente.",
+    GMAIL_PERMISSION: "O Gmail recusou o acesso. Verifique a autorização da conta nas configurações do Google.",
+    GMAIL_LIMIT: "O Gmail recebeu muitas solicitações. Aguarde alguns instantes e tente novamente.",
+    GMAIL_UNAVAILABLE: "O Gmail está temporariamente indisponível. Tente novamente mais tarde.",
+    ATTACHMENT_NOT_FOUND: "O checklist não está mais disponível neste e-mail.",
+    ATTACHMENT_EMPTY: "O anexo está vazio e não pode ser aberto.",
+    ATTACHMENT_INVALID: "O conteúdo do anexo está inválido ou danificado.",
+    UNSUPPORTED_CHECKLIST: "Este PDF não segue o formato de checklist reconhecido e não pôde ser reorganizado.",
+  };
+  return messages[error?.message] || fallback;
+}
+
+function getPdfErrorMessage(error) {
+  if (["InvalidPDFException", "FormatError", "MissingPDFException"].includes(error?.name)) {
+    return "Este checklist está danificado ou não é um PDF válido.";
+  }
+  return getErrorMessage(error, "Não foi possível abrir este checklist.");
 }
 
 function closePdf() {
@@ -529,6 +668,8 @@ function clearResults() {
   elements.resultsList.replaceChildren();
   elements.resultsHeader.classList.add("hidden");
   elements.statusMessage.classList.add("hidden");
+  elements.newCount.classList.add("hidden");
+  state.renderedItems.clear();
 }
 
 function setLoading(isLoading) {
@@ -562,5 +703,17 @@ window.addEventListener("load", () => {
   restoreSession();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(console.error);
+  }
+});
+
+window.addEventListener("offline", () => {
+  if (!elements.searchView.classList.contains("hidden")) {
+    setStatus("Sem conexão com a internet. As pesquisas ficarão indisponíveis até a conexão voltar.", true);
+  }
+});
+
+window.addEventListener("online", () => {
+  if (!elements.searchView.classList.contains("hidden")) {
+    setStatus("Conexão restabelecida. Você já pode pesquisar novamente.");
   }
 });
