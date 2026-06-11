@@ -1,13 +1,13 @@
-const CACHE_NAME = "checklist-vtr-v19";
+const CACHE_NAME = "checklist-vtr-v20";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./pdf.mjs",
-  "./pdf.worker.mjs",
-  "./pdf-lib.esm.min.js",
-  "./pdf-transformer.js",
+  "./styles.css?v=20",
+  "./app.js?v=20",
+  "./pdf.mjs?v=20",
+  "./pdf.worker.mjs?v=20",
+  "./pdf-lib.esm.min.js?v=20",
+  "./pdf-transformer.js?v=20",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",
@@ -16,17 +16,30 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(
+        APP_SHELL.map((url) =>
+          cache.add(new Request(url, { cache: "reload" }))
+        )
+      )
+    )
+  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
-    )
+    caches.keys()
+      .then((keys) =>
+        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+      )
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: "window" }))
+      .then((clients) =>
+        Promise.all(clients.map((client) => client.navigate(client.url).catch(() => null)))
+      )
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -34,14 +47,32 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
+  const isCode =
+    event.request.mode === "navigate" ||
+    ["script", "style", "worker"].includes(event.request.destination) ||
+    /\.(?:js|mjs|css|html)$/.test(url.pathname);
+
+  if (isCode) {
+    event.respondWith(
+      fetch(event.request, { cache: "no-store" })
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cached) =>
-      cached ||
-      fetch(event.request).then((response) => {
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((response) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         return response;
-      })
-    )
+      });
+    })
   );
 });

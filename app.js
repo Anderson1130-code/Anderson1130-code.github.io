@@ -411,7 +411,7 @@ async function getTreatedPdfBlob(item) {
 
   const promise = (async () => {
     const originalBlob = await getPdfBlob(item);
-    const { transformChecklistPdf } = await import("./pdf-transformer.js");
+    const { transformChecklistPdf } = await import("./pdf-transformer.js?v=20");
     return transformChecklistPdf(originalBlob);
   })();
 
@@ -702,8 +702,18 @@ window.addEventListener("load", () => {
   initializeTokenClient();
   restoreSession();
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(console.error);
+    navigator.serviceWorker
+      .register("./sw.js?v=20", { updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch(console.error);
   }
+});
+
+let reloadingForUpdate = false;
+navigator.serviceWorker?.addEventListener("controllerchange", () => {
+  if (reloadingForUpdate) return;
+  reloadingForUpdate = true;
+  window.location.reload();
 });
 
 window.addEventListener("offline", () => {

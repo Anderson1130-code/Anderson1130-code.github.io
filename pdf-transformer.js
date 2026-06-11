@@ -2,10 +2,10 @@ import {
   PDFDocument,
   StandardFonts,
   rgb,
-} from "./pdf-lib.esm.min.js";
-import * as pdfjsLib from "./pdf.mjs";
+} from "./pdf-lib.esm.min.js?v=20";
+import * as pdfjsLib from "./pdf.mjs?v=20";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=20";
 
 const A4 = [595.28, 841.89];
 const MARGIN = 42;

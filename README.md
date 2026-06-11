@@ -22,6 +22,7 @@ PWA mobile para pesquisar, visualizar e baixar checklist das VTR armazenados no 
 - O PDF original permanece inalterado no Gmail.
 - As não conformidades aparecem no final do documento, com evidências identificadas por número de foto.
 - Quando SEG estiver marcado como “Sim”, o horário da SEG também será exibido.
+- Atualizações do aplicativo e do conversor de PDF ignoram versões antigas mantidas em cache.
 - Checklist baixados sob demanda e não persistidos pelo app.
 
 ## Configuração do Google Cloud
