@@ -9,12 +9,19 @@ const AUTH_REMEMBER_KEY = "checklist-vtr-authenticated";
 const AUTH_TOKEN_KEY = "checklist-vtr-access-token";
 const AUTH_EXPIRY_KEY = "checklist-vtr-token-expiry";
 const SEEN_ITEMS_KEY = "checklist-vtr-seen-items";
+const PDF_CACHE_LIMIT = 2;
+const DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 const state = {
   accessToken: "",
   tokenClient: null,
   pendingSearch: null,
   pdfRenderId: 0,
+  pdfJsPromise: null,
+  pdfBlobCache: new Map(),
   renderedItems: new Map(),
 };
 
@@ -176,6 +183,7 @@ async function restoreSession() {
 
 function clearStoredToken() {
   state.accessToken = "";
+  state.pdfBlobCache.clear();
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_EXPIRY_KEY);
 }
@@ -383,22 +391,43 @@ async function mapWithConcurrency(items, limit, worker) {
 }
 
 async function getPdfBlob(item) {
-  let encodedData = item.inlineData;
-  if (!encodedData) {
-    const response = await gmailFetch(`/messages/${item.messageId}/attachments/${item.attachmentId}`);
-    const data = await response.json();
-    encodedData = data.data;
+  const cached = state.pdfBlobCache.get(item.id);
+  if (cached) {
+    state.pdfBlobCache.delete(item.id);
+    state.pdfBlobCache.set(item.id, cached);
+    return cached;
   }
 
-  if (!encodedData) throw new Error("ATTACHMENT_EMPTY");
-  let bytes;
-  try {
-    bytes = decodeBase64Url(encodedData);
-  } catch {
-    throw new Error("ATTACHMENT_INVALID");
+  const blobPromise = (async () => {
+    let encodedData = item.inlineData;
+    if (!encodedData) {
+      const response = await gmailFetch(`/messages/${item.messageId}/attachments/${item.attachmentId}`);
+      const data = await response.json();
+      encodedData = data.data;
+    }
+
+    if (!encodedData) throw new Error("ATTACHMENT_EMPTY");
+    let bytes;
+    try {
+      bytes = decodeBase64Url(encodedData);
+    } catch {
+      throw new Error("ATTACHMENT_INVALID");
+    }
+    if (!bytes.length) throw new Error("ATTACHMENT_EMPTY");
+    return new Blob([bytes], { type: "application/pdf" });
+  })();
+
+  state.pdfBlobCache.set(item.id, blobPromise);
+  while (state.pdfBlobCache.size > PDF_CACHE_LIMIT) {
+    state.pdfBlobCache.delete(state.pdfBlobCache.keys().next().value);
   }
-  if (!bytes.length) throw new Error("ATTACHMENT_EMPTY");
-  return new Blob([bytes], { type: "application/pdf" });
+
+  try {
+    return await blobPromise;
+  } catch (error) {
+    state.pdfBlobCache.delete(item.id);
+    throw error;
+  }
 }
 
 function decodeBase64Url(value) {
@@ -465,6 +494,7 @@ function renderResults(results) {
   }
 
   const seenItems = getSeenItems();
+  const fragment = document.createDocumentFragment();
   let newItems = 0;
 
   for (const item of results) {
@@ -479,10 +509,24 @@ function renderResults(results) {
     card.querySelector(".result-size").textContent = formatBytes(item.size);
     card.querySelector(".view-button").addEventListener("click", () => viewPdf(item));
     card.querySelector(".download-button").addEventListener("click", () => downloadPdf(item));
-    elements.resultsList.append(card);
+    fragment.append(card);
   }
 
+  elements.resultsList.append(fragment);
   updateNewCount(newItems);
+}
+
+function loadPdfJs() {
+  if (!state.pdfJsPromise) {
+    state.pdfJsPromise = import("./pdf.mjs?v=24").then((pdfjsLib) => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=24";
+      return pdfjsLib;
+    }).catch((error) => {
+      state.pdfJsPromise = null;
+      throw error;
+    });
+  }
+  return state.pdfJsPromise;
 }
 
 async function viewPdf(item) {
@@ -492,9 +536,7 @@ async function viewPdf(item) {
   elements.pdfDialog.showModal();
 
   try {
-    const blob = await getPdfBlob(item);
-    const pdfjsLib = await import("./pdf.mjs?v=23");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=23";
+    const [blob, pdfjsLib] = await Promise.all([getPdfBlob(item), loadPdfJs()]);
     const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
     elements.pdfViewer.replaceChildren();
 
@@ -520,7 +562,12 @@ async function viewPdf(item) {
       elements.pdfViewer.append(pageElement);
 
       await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+      page.cleanup();
+      if (pageNumber < pdf.numPages) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
     }
+    pdf.cleanup();
     markItemSeen(item.id);
   } catch (error) {
     console.error(error);
@@ -617,10 +664,7 @@ function closePdf() {
 }
 
 function formatDate(timestamp) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(timestamp));
+  return DATE_FORMATTER.format(new Date(timestamp));
 }
 
 function formatBytes(bytes) {
@@ -674,7 +718,7 @@ window.addEventListener("load", () => {
   restoreSession();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=23", { updateViaCache: "none" })
+      .register("./sw.js?v=24", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(console.error);
   }

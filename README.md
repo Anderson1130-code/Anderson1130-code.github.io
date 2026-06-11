@@ -19,6 +19,8 @@ PWA mobile para pesquisar, visualizar e baixar checklist das VTR armazenados no 
 - Mensagens específicas orientam sobre internet, sessão, Gmail e anexos inválidos.
 - A visualização e o download usam diretamente o PDF original armazenado no Gmail.
 - Atualizações do aplicativo ignoram versões antigas mantidas em cache.
+- O visualizador de PDF é carregado somente quando necessário.
+- O mesmo anexo é reutilizado ao visualizar e baixar, evitando downloads repetidos.
 - Checklist baixados sob demanda e não persistidos pelo app.
 
 ## Configuração do Google Cloud
