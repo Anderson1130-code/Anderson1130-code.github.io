@@ -113,6 +113,7 @@ async function extractChecklist(sourceBytes) {
     ci: valueAfter(allLines, ["C.I", "CI"]),
     shift: valueAfter(allLines, ["Turno"]),
     seg: valueAfter(allLines, ["SEG"]),
+    segTime: valueAfter(allLines, ["Horario SEG", "Horário SEG"], ""),
     openedAt: valueAfter(allLines, ["Data e horario", "Data e horário"]),
     closedAt: valueAfter(allLines, ["Horario de fechamento", "Horário de fechamento"]),
     initialKm: valueAfter(allLines, ["Km inicial"]),
@@ -168,27 +169,27 @@ function drawWrapped(page, text, options) {
 
 function drawHeader(page, fonts, prefix) {
   const { width, height } = page.getSize();
-  page.drawRectangle({ x: 0, y: height - 54, width, height: 54, color: COLORS.blue });
-  page.drawRectangle({ x: 0, y: height - 58, width, height: 4, color: COLORS.gold });
+  page.drawRectangle({ x: 0, y: height - 62, width, height: 62, color: COLORS.blue });
+  page.drawRectangle({ x: 0, y: height - 66, width, height: 4, color: COLORS.gold });
   page.drawText("14ª CICOM - CHECKLIST DE VIATURA", {
     x: MARGIN,
-    y: height - 27,
-    size: 12,
+    y: height - 30,
+    size: 13,
     font: fonts.bold,
     color: COLORS.white,
   });
   page.drawText("COMANDO DE POLICIAMENTO DE ÁREA - CPA LESTE", {
     x: MARGIN,
-    y: height - 40,
-    size: 7,
+    y: height - 46,
+    size: 8.5,
     font: fonts.regular,
     color: COLORS.white,
   });
   const prefixText = `VTR ${prefix}`;
   page.drawText(prefixText, {
     x: width - MARGIN - fonts.bold.widthOfTextAtSize(prefixText, 11),
-    y: height - 33,
-    size: 11,
+    y: height - 38,
+    size: 12,
     font: fonts.bold,
     color: COLORS.gold,
   });
@@ -205,15 +206,15 @@ function drawFooter(page, fonts, pageNumber) {
   page.drawText("Documento de controle interno • 14ª CICOM", {
     x: MARGIN,
     y: 19,
-    size: 6.5,
+    size: 7.5,
     font: fonts.regular,
     color: COLORS.muted,
   });
   const label = `Página ${pageNumber}`;
   page.drawText(label, {
-    x: width - MARGIN - fonts.regular.widthOfTextAtSize(label, 6.5),
+    x: width - MARGIN - fonts.regular.widthOfTextAtSize(label, 7.5),
     y: 19,
-    size: 6.5,
+    size: 7.5,
     font: fonts.regular,
     color: COLORS.muted,
   });
@@ -223,7 +224,7 @@ function addPage(context) {
   const page = context.document.addPage(A4);
   context.pageNumber += 1;
   context.page = page;
-  context.y = A4[1] - 79;
+  context.y = A4[1] - 84;
   drawHeader(page, context.fonts, context.data.prefix);
   drawFooter(page, context.fonts, context.pageNumber);
   return page;
@@ -234,22 +235,30 @@ function ensureSpace(context, height) {
 }
 
 function drawSection(context, title) {
-  ensureSpace(context, 28);
-  context.y -= 8;
-  context.page.drawText(title, {
+  const headingHeight = 25;
+  ensureSpace(context, headingHeight + 6);
+  context.y -= 4;
+  context.page.drawRectangle({
     x: MARGIN,
-    y: context.y,
-    size: 10,
+    y: context.y - headingHeight,
+    width: CONTENT_WIDTH,
+    height: headingHeight,
+    color: COLORS.paleBlue,
+  });
+  context.page.drawText(title, {
+    x: MARGIN + 8,
+    y: context.y - 17,
+    size: 11.5,
     font: context.fonts.bold,
     color: COLORS.blue,
   });
-  context.y -= 15;
+  context.y -= headingHeight + 4;
 }
 
 function drawInfoRows(context, rows) {
-  const labelWidth = 88;
+  const labelWidth = 92;
   const valueWidth = CONTENT_WIDTH / 2 - labelWidth;
-  const rowHeight = 30;
+  const rowHeight = 36;
   ensureSpace(context, rows.length * rowHeight);
 
   rows.forEach(([labelA, valueA, labelB, valueB]) => {
@@ -272,12 +281,12 @@ function drawInfoRows(context, rows) {
       });
       drawWrapped(context.page, cell.text, {
         x: cell.x + 6,
-        y: y + 18,
+        y: y + 22,
         width: cell.width - 12,
         font: cell.bold ? context.fonts.bold : context.fonts.regular,
-        size: 7.5,
+        size: 9,
         color: cell.bold ? COLORS.darkBlue : COLORS.text,
-        lineHeight: 9,
+        lineHeight: 11,
       });
     });
     context.y -= rowHeight;
@@ -288,10 +297,11 @@ function drawIssues(context) {
   const issues = context.data.issues.length
     ? context.data.issues
     : [{ item: "Nenhuma não conformidade registrada", status: "Conforme" }];
-  const headerHeight = 24;
-  const rowHeight = 31;
-  ensureSpace(context, headerHeight + rowHeight * issues.length);
-  const columns = [230, 150, CONTENT_WIDTH - 380];
+  const headerHeight = 29;
+  const rowHeight = 40;
+  const blockHeight = headerHeight + rowHeight * issues.length;
+  if (context.y - blockHeight < 45) addPage(context);
+  const columns = [215, 138, CONTENT_WIDTH - 353];
   const headers = ["Item", "Situação", "Evidência"];
   let x = MARGIN;
   headers.forEach((header, index) => {
@@ -304,8 +314,8 @@ function drawIssues(context) {
     });
     context.page.drawText(header, {
       x: x + 6,
-      y: context.y - 15,
-      size: 7.5,
+      y: context.y - 19,
+      size: 9,
       font: context.fonts.bold,
       color: COLORS.white,
     });
@@ -313,11 +323,15 @@ function drawIssues(context) {
   });
   context.y -= headerHeight;
 
+  const allEvidence = context.data.photoPages.length
+    ? context.data.photoPages.map((_, index) => `Foto ${index + 1}`).join(", ")
+    : "Sem fotografia";
+
   issues.forEach((issue) => {
     const values = [
       issue.item,
       issue.status,
-      `${context.data.photoPages.length} foto(s)`,
+      allEvidence,
     ];
     x = MARGIN;
     values.forEach((value, index) => {
@@ -332,11 +346,11 @@ function drawIssues(context) {
       });
       drawWrapped(context.page, value, {
         x: x + 6,
-        y: context.y - 13,
+        y: context.y - 16,
         width: columns[index] - 12,
         font: context.fonts.regular,
-        size: 7.5,
-        lineHeight: 9,
+        size: 9,
+        lineHeight: 11,
       });
       x += columns[index];
     });
@@ -405,11 +419,12 @@ function dataUrlBytes(dataUrl) {
 
 async function drawPhotos(context) {
   if (!context.data.photoPages.length) return;
-  drawSection(context, "4. REGISTRO FOTOGRÁFICO");
   const onePhoto = context.data.photoPages.length === 1;
   const gap = 10;
   const cellWidth = onePhoto ? CONTENT_WIDTH : (CONTENT_WIDTH - gap) / 2;
-  const maxHeight = onePhoto ? 300 : 190;
+  const maxHeight = onePhoto ? 285 : 180;
+  ensureSpace(context, 29 + maxHeight + 28);
+  drawSection(context, "3. REGISTRO FOTOGRÁFICO");
 
   for (let index = 0; index < context.data.photoPages.length; index += 1) {
     const column = onePhoto ? 0 : index % 2;
@@ -445,9 +460,9 @@ async function drawPhotos(context) {
       y: rowTop - maxHeight - 12,
       width: cellWidth - 12,
       font: context.fonts.bold,
-      size: 7,
+      size: 9,
       color: COLORS.darkBlue,
-      lineHeight: 8,
+      lineHeight: 11,
     });
     if (onePhoto || column === 1 || index === context.data.photoPages.length - 1) {
       context.y -= maxHeight + 30;
@@ -456,10 +471,10 @@ async function drawPhotos(context) {
 }
 
 function drawObservations(context) {
-  drawSection(context, context.data.photoPages.length ? "5. AVARIAS GERAIS / OBSERVAÇÕES" : "4. AVARIAS GERAIS / OBSERVAÇÕES");
-  const lines = wrapText(context.data.generalDamage, context.fonts.regular, 8, CONTENT_WIDTH - 16);
-  const height = Math.max(34, lines.length * 10 + 14);
-  ensureSpace(context, height);
+  const lines = wrapText(context.data.generalDamage, context.fonts.regular, 10, CONTENT_WIDTH - 18);
+  const height = Math.max(40, lines.length * 13 + 16);
+  ensureSpace(context, 29 + height);
+  drawSection(context, context.data.photoPages.length ? "4. AVARIAS GERAIS / OBSERVAÇÕES" : "3. AVARIAS GERAIS / OBSERVAÇÕES");
   context.page.drawRectangle({
     x: MARGIN,
     y: context.y - height,
@@ -471,82 +486,87 @@ function drawObservations(context) {
   });
   drawWrapped(context.page, context.data.generalDamage, {
     x: MARGIN + 8,
-    y: context.y - 14,
+    y: context.y - 17,
     width: CONTENT_WIDTH - 16,
     font: context.fonts.regular,
-    size: 8,
-    lineHeight: 10,
+    size: 10,
+    lineHeight: 13,
   });
   context.y -= height;
 }
 
 function drawOkItems(context) {
-  addPage(context);
-  drawSection(context, `${context.data.photoPages.length ? "6" : "5"}. ITENS CONFORMES`);
+  ensureSpace(context, 29 + 38);
+  drawSection(context, `${context.data.photoPages.length ? "5" : "4"}. ITENS CONFORMES`);
   const count = context.data.okItems.length;
   context.page.drawRectangle({
     x: MARGIN,
-    y: context.y - 30,
+    y: context.y - 34,
     width: CONTENT_WIDTH,
-    height: 30,
+    height: 34,
     color: COLORS.paleGreen,
     borderColor: rgb(0.66, 0.87, 0.74),
     borderWidth: 0.6,
   });
   context.page.drawText(`${count} itens conformes`, {
     x: MARGIN + 8,
-    y: context.y - 19,
-    size: 9,
+    y: context.y - 22,
+    size: 10.5,
     font: context.fonts.bold,
     color: COLORS.green,
   });
-  context.y -= 40;
+  context.y -= 38;
 
   const columnGap = 14;
   const columnWidth = (CONTENT_WIDTH - columnGap) / 2;
-  let column = 0;
-  let columnY = context.y;
-  for (const item of context.data.okItems) {
-    const lines = wrapText(item, context.fonts.regular, 7.5, columnWidth - 22);
-    const height = Math.max(22, lines.length * 9 + 8);
-    if (columnY - height < 46) {
-      if (column === 0) {
-        column = 1;
-        columnY = context.y;
-      } else {
-        addPage(context);
-        drawSection(context, "ITENS CONFORMES - CONTINUAÇÃO");
-        column = 0;
-        columnY = context.y;
-      }
+  for (let index = 0; index < context.data.okItems.length; index += 2) {
+    const leftItem = context.data.okItems[index] || "";
+    const rightItem = context.data.okItems[index + 1] || "";
+    const leftLines = wrapText(leftItem, context.fonts.regular, 9.2, columnWidth - 30);
+    const rightLines = wrapText(rightItem, context.fonts.regular, 9.2, columnWidth - 30);
+    const rowHeight = Math.max(29, Math.max(leftLines.length, rightLines.length) * 11.5 + 10);
+    if (context.y - rowHeight < 45) {
+      addPage(context);
+      drawSection(context, "ITENS CONFORMES - CONTINUAÇÃO");
     }
-    const x = MARGIN + column * (columnWidth + columnGap);
-    context.page.drawRectangle({
-      x,
-      y: columnY - height,
-      width: columnWidth,
-      height,
-      color: COLORS.white,
-      borderColor: COLORS.line,
-      borderWidth: 0.4,
+
+    [leftItem, rightItem].forEach((item, column) => {
+      const x = MARGIN + column * (columnWidth + columnGap);
+      context.page.drawRectangle({
+        x,
+        y: context.y - rowHeight,
+        width: columnWidth,
+        height: rowHeight,
+        color: COLORS.white,
+        borderColor: COLORS.line,
+        borderWidth: 0.45,
+      });
+      if (!item) return;
+      context.page.drawText("OK", {
+        x: x + 7,
+        y: context.y - 18,
+        size: 7.5,
+        font: context.fonts.bold,
+        color: COLORS.green,
+      });
+      drawWrapped(context.page, item, {
+        x: x + 26,
+        y: context.y - 17,
+        width: columnWidth - 33,
+        font: context.fonts.regular,
+        size: 9.2,
+        lineHeight: 11.5,
+      });
     });
-    context.page.drawText("OK", {
-      x: x + 6,
-      y: columnY - 14,
-      size: 6.5,
-      font: context.fonts.bold,
-      color: COLORS.green,
-    });
-    drawWrapped(context.page, item, {
-      x: x + 18,
-      y: columnY - 13,
-      width: columnWidth - 24,
-      font: context.fonts.regular,
-      size: 7.5,
-      lineHeight: 9,
-    });
-    columnY -= height;
+    context.y -= rowHeight;
   }
+}
+
+function drawFinalIssues(context) {
+  const issuesCount = Math.max(1, context.data.issues.length);
+  ensureSpace(context, 29 + 29 + issuesCount * 40);
+  drawSection(context, `${context.data.photoPages.length ? "6" : "5"}. NÃO CONFORMIDADES`);
+  drawIssues(context);
 }
 
 export async function transformChecklistPdf(blob) {
@@ -575,7 +595,14 @@ export async function transformChecklistPdf(blob) {
   drawInfoRows(context, [
     ["Prefixo da VTR", data.prefix, "Modelo", data.model],
     ["Nome de guerra", data.officer, "C.I.", data.ci],
-    ["Turno", data.shift, "SEG", data.seg],
+    [
+      "Turno",
+      data.shift,
+      "SEG",
+      normalize(data.seg) === "sim"
+        ? `${data.seg} | Horário: ${data.segTime || "Não informado"}`
+        : data.seg,
+    ],
   ]);
   drawSection(context, "2. SERVIÇO E MEDIÇÕES");
   drawInfoRows(context, [
@@ -583,11 +610,10 @@ export async function transformChecklistPdf(blob) {
     ["Km inicial", data.initialKm, "Km final", data.finalKm],
     ["Km percorrido", data.traveledKm, "Combustível", `${data.initialFuel} - ${data.finalFuel}`],
   ]);
-  drawSection(context, "3. NÃO CONFORMIDADES");
-  drawIssues(context);
   await drawPhotos(context);
   drawObservations(context);
   drawOkItems(context);
+  drawFinalIssues(context);
 
   const bytes = await document.save({ useObjectStreams: true });
   if (typeof data.sourcePdf.cleanup === "function") {
