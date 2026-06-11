@@ -17,13 +17,8 @@ PWA mobile para pesquisar, visualizar e baixar checklist das VTR armazenados no 
 - Checklist ainda não visualizados ou baixados recebem o selo **NOVO**.
 - O contador de novos é mantido localmente e separado por conta autorizada.
 - Mensagens específicas orientam sobre internet, sessão, Gmail e anexos inválidos.
-- Ao visualizar ou baixar, o checklist é reorganizado automaticamente no Modelo 3.
-- A galeria fotográfica aceita zero, uma ou várias imagens e cria páginas adicionais quando necessário.
-- O PDF original permanece inalterado no Gmail.
-- As não conformidades aparecem no final do documento, com evidências identificadas por número de foto.
-- Quando SEG estiver marcado como “Sim”, o horário da SEG também será exibido.
-- Atualizações do aplicativo e do conversor de PDF ignoram versões antigas mantidas em cache.
-- Se a reorganização falhar em determinado aparelho ou arquivo, a visualização e o download usam o PDF original como contingência.
+- A visualização e o download usam diretamente o PDF original armazenado no Gmail.
+- Atualizações do aplicativo ignoram versões antigas mantidas em cache.
 - Checklist baixados sob demanda e não persistidos pelo app.
 
 ## Configuração do Google Cloud

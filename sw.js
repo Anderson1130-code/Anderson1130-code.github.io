@@ -1,13 +1,11 @@
-const CACHE_NAME = "checklist-vtr-v21";
+const CACHE_NAME = "checklist-vtr-v23";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=21",
-  "./app.js?v=21",
-  "./pdf.mjs?v=21",
-  "./pdf.worker.mjs?v=21",
-  "./pdf-lib.esm.min.js?v=21",
-  "./pdf-transformer.js?v=21",
+  "./styles.css?v=23",
+  "./app.js?v=23",
+  "./pdf.mjs?v=23",
+  "./pdf.worker.mjs?v=23",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",
