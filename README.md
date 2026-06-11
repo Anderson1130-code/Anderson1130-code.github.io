@@ -21,6 +21,7 @@ PWA mobile para pesquisar, visualizar e baixar checklist das VTR armazenados no 
 - Atualizações do aplicativo ignoram versões antigas mantidas em cache.
 - O visualizador de PDF é carregado somente quando necessário.
 - O mesmo anexo é reutilizado ao visualizar e baixar, evitando downloads repetidos.
+- Checklists visualizados ou baixados permanecem marcados como lidos após fechar o aplicativo ou sair da conta.
 - Checklist baixados sob demanda e não persistidos pelo app.
 
 ## Configuração do Google Cloud

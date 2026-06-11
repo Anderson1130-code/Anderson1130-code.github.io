@@ -345,6 +345,12 @@ async function searchGmail(vtr, date) {
 
     return attachments.map((part, index) => ({
       id: `${id}-${part.body.attachmentId || index}`,
+      seenId: [
+        id,
+        part.filename || `documento-${id.slice(-6)}.pdf`,
+        part.body.size || 0,
+        index,
+      ].join(":"),
       messageId: id,
       attachmentId: part.body.attachmentId || "",
       inlineData: part.body.data || "",
@@ -499,7 +505,7 @@ function renderResults(results) {
 
   for (const item of results) {
     const card = elements.resultTemplate.content.firstElementChild.cloneNode(true);
-    const isNew = !seenItems.has(item.id);
+    const isNew = !isItemSeen(item, seenItems);
     if (isNew) newItems += 1;
     state.renderedItems.set(item.id, { item, card });
     card.querySelector("h3").textContent = item.filename;
@@ -518,8 +524,8 @@ function renderResults(results) {
 
 function loadPdfJs() {
   if (!state.pdfJsPromise) {
-    state.pdfJsPromise = import("./pdf.mjs?v=24").then((pdfjsLib) => {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=24";
+    state.pdfJsPromise = import("./pdf.mjs?v=25").then((pdfjsLib) => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=25";
       return pdfjsLib;
     }).catch((error) => {
       state.pdfJsPromise = null;
@@ -538,6 +544,7 @@ async function viewPdf(item) {
   try {
     const [blob, pdfjsLib] = await Promise.all([getPdfBlob(item), loadPdfJs()]);
     const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
+    markItemSeen(item);
     elements.pdfViewer.replaceChildren();
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -568,7 +575,6 @@ async function viewPdf(item) {
       }
     }
     pdf.cleanup();
-    markItemSeen(item.id);
   } catch (error) {
     console.error(error);
     if (renderId === state.pdfRenderId) {
@@ -590,7 +596,7 @@ async function downloadPdf(item) {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
-    markItemSeen(item.id);
+    markItemSeen(item);
     showToast("Download iniciado.");
   } catch (error) {
     console.error(error);
@@ -611,18 +617,31 @@ function getSeenItemsStorageKey() {
   return `${SEEN_ITEMS_KEY}:${getAuthorizedEmail()}`;
 }
 
-function markItemSeen(itemId) {
+function getItemSeenIds(item) {
+  return [item.id, item.seenId].filter(Boolean);
+}
+
+function isItemSeen(item, seenItems) {
+  return getItemSeenIds(item).some((itemId) => seenItems.has(itemId));
+}
+
+function markItemSeen(item) {
   const seenItems = getSeenItems();
-  if (seenItems.has(itemId)) return;
+  const itemIds = getItemSeenIds(item);
+  const alreadySeen = itemIds.some((itemId) => seenItems.has(itemId));
 
-  seenItems.add(itemId);
-  localStorage.setItem(getSeenItemsStorageKey(), JSON.stringify(Array.from(seenItems).slice(-1000)));
+  for (const itemId of itemIds) {
+    seenItems.add(itemId);
+  }
+  localStorage.setItem(getSeenItemsStorageKey(), JSON.stringify(Array.from(seenItems).slice(-2000)));
 
-  const rendered = state.renderedItems.get(itemId);
+  const rendered = state.renderedItems.get(item.id);
   if (rendered) {
     rendered.card.classList.remove("is-new");
     rendered.card.querySelector(".new-label").classList.add("hidden");
   }
+
+  if (alreadySeen) return;
 
   const remainingNew = Array.from(state.renderedItems.values())
     .filter(({ card }) => card.classList.contains("is-new")).length;
@@ -718,7 +737,7 @@ window.addEventListener("load", () => {
   restoreSession();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=24", { updateViaCache: "none" })
+      .register("./sw.js?v=25", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(console.error);
   }
