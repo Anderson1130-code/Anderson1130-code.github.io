@@ -2,10 +2,10 @@ import {
   PDFDocument,
   StandardFonts,
   rgb,
-} from "./pdf-lib.esm.min.js?v=20";
-import * as pdfjsLib from "./pdf.mjs?v=20";
+} from "./pdf-lib.esm.min.js?v=21";
+import * as pdfjsLib from "./pdf.mjs?v=21";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=20";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=21";
 
 const A4 = [595.28, 841.89];
 const MARGIN = 42;
@@ -359,7 +359,8 @@ function drawIssues(context) {
 }
 
 async function renderPhotoPage(sourcePage) {
-  const viewport = sourcePage.getViewport({ scale: 1.35 });
+  const isMobile = Math.min(window.innerWidth, window.innerHeight) < 820;
+  const viewport = sourcePage.getViewport({ scale: isMobile ? 0.9 : 1.15 });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width);
   canvas.height = Math.ceil(viewport.height);

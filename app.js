@@ -411,7 +411,7 @@ async function getTreatedPdfBlob(item) {
 
   const promise = (async () => {
     const originalBlob = await getPdfBlob(item);
-    const { transformChecklistPdf } = await import("./pdf-transformer.js?v=20");
+    const { transformChecklistPdf } = await import("./pdf-transformer.js?v=21");
     return transformChecklistPdf(originalBlob);
   })();
 
@@ -421,6 +421,23 @@ async function getTreatedPdfBlob(item) {
   } catch (error) {
     state.treatedPdfCache.delete(item.id);
     throw error;
+  }
+}
+
+async function getUsablePdfBlob(item) {
+  try {
+    return {
+      blob: await getTreatedPdfBlob(item),
+      filename: getTreatedFilename(item.filename),
+      treated: true,
+    };
+  } catch (error) {
+    console.error("Falha ao gerar o Modelo 3; usando o PDF original.", error);
+    return {
+      blob: await getPdfBlob(item),
+      filename: item.filename,
+      treated: false,
+    };
   }
 }
 
@@ -520,9 +537,11 @@ async function viewPdf(item) {
   elements.pdfDialog.showModal();
 
   try {
-    const blob = await getTreatedPdfBlob(item);
-    const pdfjsLib = await import("./pdf.mjs");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs";
+    const result = await getUsablePdfBlob(item);
+    const blob = result.blob;
+    elements.pdfTitle.textContent = result.filename;
+    const pdfjsLib = await import("./pdf.mjs?v=21");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=21";
     const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
     elements.pdfViewer.replaceChildren();
 
@@ -550,6 +569,9 @@ async function viewPdf(item) {
       await page.render({ canvasContext: context, viewport: renderViewport }).promise;
     }
     markItemSeen(item.id);
+    if (!result.treated) {
+      showToast("O Modelo 3 não pôde ser gerado. Exibindo o PDF original.");
+    }
   } catch (error) {
     console.error(error);
     if (renderId === state.pdfRenderId) {
@@ -562,17 +584,20 @@ async function viewPdf(item) {
 async function downloadPdf(item) {
   try {
     showToast("Organizando checklist no Modelo 3...");
-    const blob = await getTreatedPdfBlob(item);
+    const result = await getUsablePdfBlob(item);
+    const blob = result.blob;
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = getTreatedFilename(item.filename);
+    link.download = result.filename;
+    link.target = "_blank";
+    link.rel = "noopener";
     document.body.append(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
     markItemSeen(item.id);
-    showToast("Download iniciado.");
+    showToast(result.treated ? "Download iniciado." : "Modelo 3 indisponível. Baixando o PDF original.");
   } catch (error) {
     console.error(error);
     showToast(getErrorMessage(error, "Não foi possível baixar este checklist."));
@@ -703,7 +728,7 @@ window.addEventListener("load", () => {
   restoreSession();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=20", { updateViaCache: "none" })
+      .register("./sw.js?v=21", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(console.error);
   }
