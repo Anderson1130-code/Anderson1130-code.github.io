@@ -57,6 +57,9 @@ const elements = {
   clientIdInput: document.querySelector("#clientIdInput"),
   authorizedEmailInput: document.querySelector("#authorizedEmailInput"),
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
+  loginState: document.querySelector("#loginState"),
+  loggedState: document.querySelector("#loggedState"),
+  goSearchButton: document.querySelector("#goSearchButton"),
   logoutDialog: document.querySelector("#logoutDialog"),
   logoutConfirmButton: document.querySelector("#logoutConfirmButton"),
   logoutCancelButton: document.querySelector("#logoutCancelButton"),
@@ -123,7 +126,7 @@ async function handleTokenResponse(response) {
       google.accounts.oauth2.revoke(response.access_token, () => {});
     }
     showLoginView();
-    showToast(`Acesso permitido somente para ${authorizedEmail}.`);
+    showToast(`Acesso permitido apenas para ${authorizedEmail}.`);
     return;
   }
 
@@ -185,7 +188,11 @@ async function restoreSession() {
     clearStoredToken();
   }
 
-  if (remembered) showSearchView();
+  if (remembered) {
+    showSearchView();
+  } else {
+    updateLoginCard();
+  }
 }
 
 function clearStoredToken() {
@@ -207,6 +214,13 @@ function showLoginView() {
   elements.loginView.classList.remove("hidden");
   elements.logoutButton.classList.add("hidden");
   clearResults();
+  updateLoginCard();
+}
+
+function updateLoginCard() {
+  const isLoggedIn = !!state.accessToken;
+  elements.loginState.classList.toggle("hidden", isLoggedIn);
+  elements.loggedState.classList.toggle("hidden", !isLoggedIn);
 }
 
 function openLogoutDialog() {
@@ -287,7 +301,7 @@ function saveSettings(event) {
   if (previousToken && window.google?.accounts?.oauth2) {
     google.accounts.oauth2.revoke(previousToken, () => {});
   }
-  showToast("Configuração salva.");
+  showToast("Configurações salvas.");
 }
 
 function buildGmailQuery(vtr, date) {
@@ -485,7 +499,7 @@ async function handleSearch(event) {
 async function executeSearch(vtr, date) {
   setLoading(true);
   clearResults();
-  setStatus("Buscando checklist...");
+  setStatus("Buscando checklists...");
   try {
     const results = await searchGmail(vtr, date);
     renderResults(results);
@@ -506,7 +520,7 @@ function renderResults(results) {
 
   if (!results.length) {
     updateNewCount(0);
-    setStatus("Nenhum checklist foi encontrado para os filtros informados.");
+    setStatus("Nenhum checklist encontrado para os filtros informados.");
     return;
   }
 
@@ -682,7 +696,7 @@ function getErrorMessage(error, fallback) {
 
 function getPdfErrorMessage(error) {
   if (["InvalidPDFException", "FormatError", "MissingPDFException"].includes(error?.name)) {
-    return "Este checklist está danificado ou não é um PDF válido.";
+    return "Este checklist está corrompido ou não é um PDF válido.";
   }
   return getErrorMessage(error, "Não foi possível abrir este checklist.");
 }
@@ -759,6 +773,10 @@ elements.closeSettingsButton.addEventListener("click", () => elements.settingsDi
 elements.closePdfButton.addEventListener("click", closePdf);
 elements.pdfDialog.addEventListener("close", () => {
   state.pdfRenderId += 1;
+});
+
+elements.goSearchButton.addEventListener("click", () => {
+  showSearchView();
 });
 
 elements.logoutConfirmButton.addEventListener("click", () => {

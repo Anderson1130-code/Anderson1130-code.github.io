@@ -1093,3 +1093,37 @@ dialog::backdrop {
 .secondary-button:hover {
   background: rgba(36,111,211,0.06);
 }
+
+/* ── Login / Logged states ── */
+.login-state,
+.logged-state {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.logged-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  border-radius: 0.7rem;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.logged-badge svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: #2e7d32;
+  flex-shrink: 0;
+}
+
+.primary-button.full-width {
+  width: 100%;
+  justify-content: center;
+}
