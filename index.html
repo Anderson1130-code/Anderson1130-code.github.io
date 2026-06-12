@@ -54,6 +54,10 @@
 
         <section id="searchView" class="search-view hidden">
           <div class="search-heading">
+            <button id="backButton" class="back-button" type="button" aria-label="Voltar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2Z"/></svg>
+              Voltar
+            </button>
             <div class="search-identity">
               <img src="./14-cicom.png" alt="" />
               <p class="eyebrow">14ª CICOM • PESQUISA DE DOCUMENTOS</p>
@@ -139,6 +143,20 @@
       </div>
       <div id="pdfViewer" class="pdf-viewer" role="document" aria-label="Visualizador de checklist">
         <div class="pdf-loading">Carregando checklist...</div>
+      </div>
+    </dialog>
+
+    <dialog id="logoutDialog" class="logout-dialog">
+      <div class="logout-dialog-body">
+        <div class="logout-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2Zm1 15h-2v-2h2v2Zm0-4h-2V7h2v6Z"/></svg>
+        </div>
+        <h2>Atenção</h2>
+        <p>Se você sair, suas credenciais de acesso serão perdidas e será necessário entrar em contato com o desenvolvedor do projeto para recuperá-las.</p>
+        <div class="logout-actions">
+          <button id="logoutConfirmButton" class="danger-button" type="button">Desejo sair</button>
+          <button id="logoutCancelButton" class="secondary-button" type="button">Voltar à página inicial</button>
+        </div>
       </div>
     </dialog>
 

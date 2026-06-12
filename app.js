@@ -57,6 +57,10 @@ const elements = {
   clientIdInput: document.querySelector("#clientIdInput"),
   authorizedEmailInput: document.querySelector("#authorizedEmailInput"),
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
+  logoutDialog: document.querySelector("#logoutDialog"),
+  logoutConfirmButton: document.querySelector("#logoutConfirmButton"),
+  logoutCancelButton: document.querySelector("#logoutCancelButton"),
+  backButton: document.querySelector("#backButton"),
   toast: document.querySelector("#toast"),
 };
 
@@ -203,6 +207,10 @@ function showLoginView() {
   elements.loginView.classList.remove("hidden");
   elements.logoutButton.classList.add("hidden");
   clearResults();
+}
+
+function openLogoutDialog() {
+  elements.logoutDialog.showModal();
 }
 
 function logout() {
@@ -742,7 +750,7 @@ elements.vtrManualInput.addEventListener("input", () => {
 });
 
 elements.loginButton.addEventListener("click", requestLogin);
-elements.logoutButton.addEventListener("click", logout);
+elements.logoutButton.addEventListener("click", openLogoutDialog);
 elements.settingsButton.addEventListener("click", openSettings);
 elements.searchForm.addEventListener("submit", handleSearch);
 elements.adminUnlockForm.addEventListener("submit", unlockSettings);
@@ -751,6 +759,19 @@ elements.closeSettingsButton.addEventListener("click", () => elements.settingsDi
 elements.closePdfButton.addEventListener("click", closePdf);
 elements.pdfDialog.addEventListener("close", () => {
   state.pdfRenderId += 1;
+});
+
+elements.logoutConfirmButton.addEventListener("click", () => {
+  elements.logoutDialog.close();
+  logout();
+});
+
+elements.logoutCancelButton.addEventListener("click", () => {
+  elements.logoutDialog.close();
+});
+
+elements.backButton.addEventListener("click", () => {
+  showLoginView();
 });
 
 window.addEventListener("load", () => {
