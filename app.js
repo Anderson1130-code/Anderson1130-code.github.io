@@ -35,6 +35,9 @@ const elements = {
   searchForm: document.querySelector("#searchForm"),
   searchButton: document.querySelector("#searchButton"),
   vtrInput: document.querySelector("#vtrInput"),
+  vtrSelect: document.querySelector("#vtrSelect"),
+  vtrManualWrap: document.querySelector("#vtrManualWrap"),
+  vtrManualInput: document.querySelector("#vtrManualInput"),
   dateInput: document.querySelector("#dateInput"),
   statusMessage: document.querySelector("#statusMessage"),
   resultsHeader: document.querySelector("#resultsHeader"),
@@ -718,6 +721,25 @@ function showToast(message) {
   elements.toast.classList.add("visible");
   toastTimer = setTimeout(() => elements.toast.classList.remove("visible"), 2600);
 }
+
+elements.vtrSelect.addEventListener("change", () => {
+  const val = elements.vtrSelect.value;
+  if (val === "__manual__") {
+    elements.vtrManualWrap.classList.remove("hidden");
+    elements.vtrInput.value = "";
+    elements.vtrManualInput.value = "";
+    elements.vtrManualInput.focus();
+  } else {
+    elements.vtrManualWrap.classList.add("hidden");
+    elements.vtrInput.value = val;
+  }
+});
+
+elements.vtrManualInput.addEventListener("input", () => {
+  const digits = elements.vtrManualInput.value.replace(/\D/g, "").slice(0, 4);
+  elements.vtrManualInput.value = digits;
+  elements.vtrInput.value = digits ? "25-" + digits : "";
+});
 
 elements.loginButton.addEventListener("click", requestLogin);
 elements.logoutButton.addEventListener("click", logout);

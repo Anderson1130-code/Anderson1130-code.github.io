@@ -67,16 +67,27 @@
               <span>VTR</span>
               <div class="input-wrap">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 19.6-5.2-5.2a7.5 7.5 0 1 0-1.4 1.4l5.2 5.2 1.4-1.4ZM4 10a6 6 0 1 1 12 0 6 6 0 0 1-12 0Z"/></svg>
-                <select id="vtrInput" name="vtr">
+                <select id="vtrSelect" name="vtrSelect">
                   <option value="">Selecione a VTR</option>
                   <option value="25-1005">25-1005</option>
                   <option value="25-1033">25-1033</option>
                   <option value="25-1030">25-1030</option>
                   <option value="25-1124">25-1124</option>
                   <option value="25-1104">25-1104</option>
+                  <option value="__manual__">Digitar manualmente...</option>
                 </select>
               </div>
             </label>
+            <div id="vtrManualWrap" class="vtr-manual-wrap hidden">
+              <label>
+                <span>Número da VTR</span>
+                <div class="input-wrap input-wrap--manual">
+                  <span class="vtr-prefix">25-</span>
+                  <input id="vtrManualInput" name="vtrManual" type="text" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off" />
+                </div>
+              </label>
+            </div>
+            <input id="vtrInput" name="vtr" type="hidden" />
             <label>
               <span>Data do envio</span>
               <div class="input-wrap">

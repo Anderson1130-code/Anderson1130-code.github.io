@@ -381,6 +381,32 @@ select {
   cursor: pointer;
 }
 
+.vtr-manual-wrap {
+  margin-top: 0.5rem;
+}
+
+.vtr-manual-wrap.hidden {
+  display: none;
+}
+
+.input-wrap--manual {
+  gap: 0;
+}
+
+.vtr-prefix {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--navy);
+  padding-right: 0.15rem;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.input-wrap--manual input {
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+
 .primary-button {
   min-height: 3.15rem;
   padding: 0 1.15rem;
