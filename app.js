@@ -38,7 +38,7 @@ const elements = {
   authorizedAccountLabel: document.querySelector("#authorizedAccountLabel"),
   searchForm: document.querySelector("#searchForm"),
   searchButton: document.querySelector("#searchButton"),
-  vtrInput: document.querySelector("#vtrInput"),
+
   dateInput: document.querySelector("#dateInput"),
   statusMessage: document.querySelector("#statusMessage"),
   resultsHeader: document.querySelector("#resultsHeader"),
@@ -138,7 +138,7 @@ async function handleTokenResponse(response) {
     state.pendingSearch = null;
     executeSearch(pendingSearch.vtr, pendingSearch.date);
   } else {
-    showToast("Gmail conectado com sucesso.");
+    showToast("Autenticação bem-sucedida.");
   }
 }
 
@@ -839,6 +839,25 @@ elements.closeSettingsButton.addEventListener("click", () => elements.settingsDi
 elements.closePdfButton.addEventListener("click", closePdf);
 elements.pdfDialog.addEventListener("close", () => {
   state.pdfRenderId += 1;
+});
+
+elements.vtrSelect.addEventListener("change", () => {
+  const val = elements.vtrSelect.value;
+  if (val === "__manual__") {
+    elements.vtrManualWrap.classList.remove("hidden");
+    elements.vtrInput.value = "";
+    elements.vtrManualInput.value = "";
+    elements.vtrManualInput.focus();
+  } else {
+    elements.vtrManualWrap.classList.add("hidden");
+    elements.vtrInput.value = val;
+  }
+});
+
+elements.vtrManualInput.addEventListener("input", () => {
+  const digits = elements.vtrManualInput.value.replace(/\D/g, "").slice(0, 4);
+  elements.vtrManualInput.value = digits;
+  elements.vtrInput.value = digits ? "25-" + digits : "";
 });
 
 window.addEventListener("load", () => {

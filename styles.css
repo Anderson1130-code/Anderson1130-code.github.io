@@ -799,10 +799,7 @@ dialog::backdrop {
   font-size: 1.05rem;
 }
 
-.developer-inner small {
-  color: #aebac8;
-  font-size: 0.72rem;
-}
+
 
 .toast.visible {
   transform: translate(-50%, 0);
@@ -950,9 +947,12 @@ dialog::backdrop {
   }
 
   .developer-inner small {
-    max-width: 15rem;
     font-size: 0.61rem;
     line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   .pdf-viewer {
@@ -968,4 +968,27 @@ dialog::backdrop {
     scroll-behavior: auto !important;
     transition: none !important;
   }
+}
+
+/* ── Manual VTR input ── */
+.vtr-manual-wrap {
+  margin-top: 0.5rem;
+}
+.vtr-manual-wrap.hidden {
+  display: none;
+}
+.input-wrap--manual {
+  gap: 0;
+}
+.vtr-prefix {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--navy);
+  padding-right: 0.15rem;
+  white-space: nowrap;
+  user-select: none;
+}
+.input-wrap--manual input {
+  font-size: 1rem;
+  letter-spacing: 0.05em;
 }
