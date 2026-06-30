@@ -12,6 +12,7 @@ const AUTHORIZED_EMAIL_KEY = "checklist-vtr-authorized-email";
 const AUTH_REMEMBER_KEY = "checklist-vtr-authenticated";
 const AUTH_TOKEN_KEY = "checklist-vtr-access-token";
 const AUTH_EXPIRY_KEY = "checklist-vtr-token-expiry";
+const SCOPE_KEY = "checklist-vtr-full-scope";
 const SEEN_ITEMS_KEY = "checklist-vtr-seen-items";
 const PDF_CACHE_LIMIT = 2;
 const DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
@@ -71,6 +72,8 @@ const elements = {
   toast: document.querySelector("#toast"),
 };
 
+// ── Configuração ──────────────────────────────────────────────
+
 function getClientId() {
   return localStorage.getItem(CLIENT_ID_KEY)?.trim() || DEFAULT_CLIENT_ID;
 }
@@ -78,6 +81,8 @@ function getClientId() {
 function getAuthorizedEmail() {
   return localStorage.getItem(AUTHORIZED_EMAIL_KEY)?.trim().toLowerCase() || DEFAULT_AUTHORIZED_EMAIL;
 }
+
+// ── Token Client ──────────────────────────────────────────────
 
 function initializeTokenClient() {
   const clientId = getClientId();
@@ -96,6 +101,7 @@ function initializeTokenClient() {
   return true;
 }
 
+// Usa userinfo para validar o email — funciona com qualquer escopo combinado
 async function getProfileEmail(accessToken) {
   let response;
   try {
@@ -112,7 +118,7 @@ async function getProfileEmail(accessToken) {
 
 async function handleTokenResponse(response) {
   if (response.error) {
-    showToast("Acesso ao Gmail não autorizado.");
+    showToast("Acesso não autorizado.");
     return;
   }
 
@@ -122,6 +128,11 @@ async function handleTokenResponse(response) {
     profileEmail = await getProfileEmail(response.access_token);
   } catch (error) {
     showToast(getErrorMessage(error, "Não foi possível validar a conta."));
+    return;
+  }
+
+  if (!profileEmail) {
+    showToast("Não foi possível obter o e-mail da conta. Tente novamente.");
     return;
   }
 
@@ -136,7 +147,7 @@ async function handleTokenResponse(response) {
 
   state.accessToken = response.access_token;
   localStorage.setItem(AUTH_REMEMBER_KEY, "true");
-  localStorage.setItem("checklist-vtr-full-scope", "true");
+  localStorage.setItem(SCOPE_KEY, "true");
   localStorage.setItem(AUTH_TOKEN_KEY, response.access_token);
   localStorage.setItem(
     AUTH_EXPIRY_KEY,
@@ -158,12 +169,17 @@ function requestGoogleAccess(prompt = "") {
     showToast("O login do Google ainda está carregando. Tente novamente.");
     return false;
   }
-
   state.tokenClient.requestAccessToken({ prompt });
   return true;
 }
 
+function requestLogin() {
+  // Força consent se ainda não autorizou o escopo completo (Gmail + Drive)
+  const hasFullScope = localStorage.getItem(SCOPE_KEY) === "true";
+  requestGoogleAccess(hasFullScope ? "" : "consent");
+}
 
+// ── Sessão ────────────────────────────────────────────────────
 
 async function restoreSession() {
   const remembered = localStorage.getItem(AUTH_REMEMBER_KEY) === "true";
@@ -175,8 +191,10 @@ async function restoreSession() {
     try {
       profileEmail = await getProfileEmail(storedToken);
     } catch {
+      // Erro de rede — usa token mesmo assim se tiver sessão salva
       state.accessToken = storedToken;
       if (remembered) showSearchView();
+      else updateLoginCard();
       return;
     }
     if (profileEmail === getAuthorizedEmail()) {
@@ -184,14 +202,14 @@ async function restoreSession() {
     } else {
       clearStoredToken();
       localStorage.removeItem(AUTH_REMEMBER_KEY);
-      showLoginView();
+      updateLoginCard();
       return;
     }
   } else {
     clearStoredToken();
   }
 
-  if (remembered) {
+  if (remembered && state.accessToken) {
     showSearchView();
   } else {
     updateLoginCard();
@@ -204,6 +222,8 @@ function clearStoredToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_EXPIRY_KEY);
 }
+
+// ── Navegação ─────────────────────────────────────────────────
 
 function showSearchView() {
   elements.loginView.classList.add("hidden");
@@ -226,6 +246,8 @@ function updateLoginCard() {
   elements.loggedState.classList.toggle("hidden", !isLoggedIn);
 }
 
+// ── Logout ────────────────────────────────────────────────────
+
 function openLogoutDialog() {
   elements.logoutDialog.showModal();
 }
@@ -234,6 +256,7 @@ function logout() {
   const token = state.accessToken;
   clearStoredToken();
   localStorage.removeItem(AUTH_REMEMBER_KEY);
+  localStorage.removeItem(SCOPE_KEY);
   state.pendingSearch = null;
 
   if (token && window.google?.accounts?.oauth2) {
@@ -242,6 +265,8 @@ function logout() {
 
   showLoginView();
 }
+
+// ── Configurações ─────────────────────────────────────────────
 
 function openSettings() {
   elements.adminUnlockForm.classList.remove("hidden");
@@ -296,6 +321,7 @@ function saveSettings(event) {
   localStorage.setItem(AUTHORIZED_EMAIL_KEY, authorizedEmail);
   clearStoredToken();
   localStorage.removeItem(AUTH_REMEMBER_KEY);
+  localStorage.removeItem(SCOPE_KEY);
   state.tokenClient = null;
   initializeTokenClient();
   elements.authorizedAccountLabel.textContent = authorizedEmail;
@@ -306,6 +332,8 @@ function saveSettings(event) {
   }
   showToast("Configurações salvas.");
 }
+
+// ── Gmail API ─────────────────────────────────────────────────
 
 function buildGmailQuery(vtr, date) {
   const parts = ["has:attachment", "filename:pdf"];
@@ -339,11 +367,7 @@ async function gmailFetch(path) {
     throw new Error("NETWORK_ERROR");
   }
 
-  if (response.status === 401) {
-    clearStoredToken();
-    throw new Error("SESSION_EXPIRED");
-  }
-
+  if (response.status === 401) { clearStoredToken(); throw new Error("SESSION_EXPIRED"); }
   if (response.status === 400) throw new Error("GMAIL_REQUEST");
   if (response.status === 403) throw new Error("GMAIL_PERMISSION");
   if (response.status === 404) throw new Error("ATTACHMENT_NOT_FOUND");
@@ -373,12 +397,8 @@ async function searchGmail(vtr, date) {
 
     return attachments.map((part, index) => ({
       id: `${id}-${part.body.attachmentId || index}`,
-      seenId: [
-        id,
-        part.filename || `documento-${id.slice(-6)}.pdf`,
-        part.body.size || 0,
-        index,
-      ].join(":"),
+      seenId: [id, part.filename || `documento-${id.slice(-6)}.pdf`, part.body.size || 0, index].join(":"),
+      source: "gmail",
       messageId: id,
       attachmentId: part.body.attachmentId || "",
       inlineData: part.body.data || "",
@@ -388,9 +408,7 @@ async function searchGmail(vtr, date) {
     }));
   });
 
-  return messageGroups
-    .flat()
-    .sort((a, b) => b.timestamp - a.timestamp);
+  return messageGroups.flat().sort((a, b) => b.timestamp - a.timestamp);
 }
 
 function collectPdfParts(part, results = []) {
@@ -409,24 +427,11 @@ function collectPdfParts(part, results = []) {
   return results;
 }
 
-async function mapWithConcurrency(items, limit, worker) {
-  const results = new Array(items.length);
-  let cursor = 0;
-
-  async function run() {
-    while (cursor < items.length) {
-      const index = cursor++;
-      results[index] = await worker(items[index], index);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
-  return results;
-}
-
+// ── Drive API ─────────────────────────────────────────────────
 
 async function driveFetch(path) {
   if (!navigator.onLine) throw new Error("OFFLINE");
+
   let response;
   try {
     response = await fetch(`${DRIVE_API}${path}`, {
@@ -435,38 +440,39 @@ async function driveFetch(path) {
   } catch {
     throw new Error("NETWORK_ERROR");
   }
+
   if (response.status === 401) { clearStoredToken(); throw new Error("SESSION_EXPIRED"); }
   if (response.status === 403) throw new Error("GMAIL_PERMISSION");
   if (response.status === 404) throw new Error("ATTACHMENT_NOT_FOUND");
   if (response.status === 429) throw new Error("GMAIL_LIMIT");
   if (response.status >= 500) throw new Error("GMAIL_UNAVAILABLE");
+
   if (!response.ok) {
     const details = await response.json().catch(() => ({}));
     throw new Error(details.error?.message || "Falha ao acessar o Drive.");
   }
+
   return response;
 }
 
 async function getDriveFolderId() {
-  const params = new URLSearchParams({
-    q: `name = '${DRIVE_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-    fields: "files(id)",
-    pageSize: "1",
-  });
+  const q = `name = '${DRIVE_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+  const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "1" });
   const response = await driveFetch(`/files?${params}`);
   const data = await response.json();
   return data.files?.[0]?.id || null;
 }
 
 async function searchDrive(vtr, date) {
-  const folderId = await getDriveFolderId();
+  let folderId;
+  try {
+    folderId = await getDriveFolderId();
+  } catch {
+    return [];
+  }
   if (!folderId) return [];
 
-  const parts = [
-    `'${folderId}' in parents`,
-    `mimeType = 'application/pdf'`,
-    `trashed = false`,
-  ];
+  const parts = [`'${folderId}' in parents`, `mimeType = 'application/pdf'`, `trashed = false`];
   if (vtr) parts.push(`name contains '${vtr.replaceAll("'", "").trim()}'`);
   if (date) {
     const selected = new Date(`${date}T00:00:00`);
@@ -499,6 +505,25 @@ async function searchDrive(vtr, date) {
   }));
 }
 
+// ── Concorrência ──────────────────────────────────────────────
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  async function run() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
+// ── PDF Blob ──────────────────────────────────────────────────
+
 async function getPdfBlob(item) {
   const cached = state.pdfBlobCache.get(item.id);
   if (cached) {
@@ -514,6 +539,8 @@ async function getPdfBlob(item) {
       if (!arrayBuffer.byteLength) throw new Error("ATTACHMENT_EMPTY");
       return new Blob([arrayBuffer], { type: "application/pdf" });
     }
+
+    // Gmail
     let encodedData = item.inlineData;
     if (!encodedData) {
       const response = await gmailFetch(`/messages/${item.messageId}/attachments/${item.attachmentId}`);
@@ -555,6 +582,8 @@ function decodeBase64Url(value) {
   return bytes;
 }
 
+// ── Busca ─────────────────────────────────────────────────────
+
 async function handleSearch(event) {
   event.preventDefault();
   const vtr = elements.vtrInput.value.trim();
@@ -568,7 +597,7 @@ async function handleSearch(event) {
 
   if (!state.accessToken) {
     state.pendingSearch = { vtr, date };
-    setStatus("Renovando o acesso ao Gmail...");
+    setStatus("Renovando o acesso...");
     if (!requestGoogleAccess("")) {
       state.pendingSearch = null;
       setStatus("Não foi possível renovar o acesso. Verifique a configuração.", true);
@@ -588,9 +617,13 @@ async function executeSearch(vtr, date) {
       searchGmail(vtr, date).catch(() => []),
       searchDrive(vtr, date).catch(() => []),
     ]);
-    // Junta resultados evitando duplicatas pelo nome do arquivo
-    const seen = new Set(gmailResults.map((r) => r.filename));
-    const merged = [...gmailResults, ...driveResults.filter((r) => !seen.has(r.filename))];
+
+    // Junta os resultados, evitando duplicatas pelo nome do arquivo
+    const seenNames = new Set(gmailResults.map((r) => r.filename.toLowerCase()));
+    const merged = [
+      ...gmailResults,
+      ...driveResults.filter((r) => !seenNames.has(r.filename.toLowerCase())),
+    ];
     merged.sort((a, b) => b.timestamp - a.timestamp);
     renderResults(merged);
   } catch (error) {
@@ -600,6 +633,8 @@ async function executeSearch(vtr, date) {
     setLoading(false);
   }
 }
+
+// ── Renderização ──────────────────────────────────────────────
 
 function renderResults(results) {
   elements.statusMessage.classList.add("hidden");
@@ -636,6 +671,8 @@ function renderResults(results) {
   elements.resultsList.append(fragment);
   updateNewCount(newItems);
 }
+
+// ── PDF Viewer ────────────────────────────────────────────────
 
 function loadPdfJs() {
   if (!state.pdfJsPromise) {
@@ -719,6 +756,8 @@ async function downloadPdf(item) {
   }
 }
 
+// ── Itens vistos ──────────────────────────────────────────────
+
 function getSeenItems() {
   try {
     const stored = JSON.parse(localStorage.getItem(getSeenItemsStorageKey()) || "[]");
@@ -768,16 +807,18 @@ function updateNewCount(count) {
   elements.newCount.classList.toggle("hidden", count === 0);
 }
 
+// ── Mensagens de erro ─────────────────────────────────────────
+
 function getErrorMessage(error, fallback) {
   const messages = {
     OFFLINE: "Sem conexão com a internet. Conecte o celular e tente novamente.",
     NETWORK_ERROR: "Não foi possível acessar a internet. Verifique a conexão e tente novamente.",
-    SESSION_EXPIRED: "O acesso ao Gmail expirou. Toque em Pesquisar novamente para renová-lo.",
+    SESSION_EXPIRED: "A sessão expirou. Toque em Pesquisar novamente para renová-la.",
     GMAIL_REQUEST: "O Gmail não conseguiu processar esta solicitação. Revise os filtros e tente novamente.",
-    GMAIL_PERMISSION: "O Gmail recusou o acesso. Verifique a autorização da conta nas configurações do Google.",
-    GMAIL_LIMIT: "O Gmail recebeu muitas solicitações. Aguarde alguns instantes e tente novamente.",
-    GMAIL_UNAVAILABLE: "O Gmail está temporariamente indisponível. Tente novamente mais tarde.",
-    ATTACHMENT_NOT_FOUND: "O checklist não está mais disponível neste e-mail.",
+    GMAIL_PERMISSION: "Acesso recusado. Verifique a autorização da conta nas configurações do Google.",
+    GMAIL_LIMIT: "Muitas solicitações. Aguarde alguns instantes e tente novamente.",
+    GMAIL_UNAVAILABLE: "Serviço temporariamente indisponível. Tente novamente mais tarde.",
+    ATTACHMENT_NOT_FOUND: "O checklist não está mais disponível.",
     ATTACHMENT_EMPTY: "O anexo está vazio e não pode ser aberto.",
     ATTACHMENT_INVALID: "O conteúdo do anexo está inválido ou danificado.",
   };
@@ -790,6 +831,8 @@ function getPdfErrorMessage(error) {
   }
   return getErrorMessage(error, "Não foi possível abrir este checklist.");
 }
+
+// ── UI helpers ────────────────────────────────────────────────
 
 function closePdf() {
   state.pdfRenderId += 1;
@@ -834,6 +877,8 @@ function showToast(message) {
   toastTimer = setTimeout(() => elements.toast.classList.remove("visible"), 2600);
 }
 
+// ── Event listeners ───────────────────────────────────────────
+
 elements.vtrSelect.addEventListener("change", () => {
   const val = elements.vtrSelect.value;
   if (val === "__manual__") {
@@ -861,26 +906,13 @@ elements.adminUnlockForm.addEventListener("submit", unlockSettings);
 elements.settingsForm.addEventListener("submit", saveSettings);
 elements.closeSettingsButton.addEventListener("click", () => elements.settingsDialog.close());
 elements.closePdfButton.addEventListener("click", closePdf);
-elements.pdfDialog.addEventListener("close", () => {
-  state.pdfRenderId += 1;
-});
+elements.pdfDialog.addEventListener("close", () => { state.pdfRenderId += 1; });
+elements.goSearchButton.addEventListener("click", () => showSearchView());
+elements.logoutConfirmButton.addEventListener("click", () => { elements.logoutDialog.close(); logout(); });
+elements.logoutCancelButton.addEventListener("click", () => elements.logoutDialog.close());
+elements.backButton.addEventListener("click", () => showLoginView());
 
-elements.goSearchButton.addEventListener("click", () => {
-  showSearchView();
-});
-
-elements.logoutConfirmButton.addEventListener("click", () => {
-  elements.logoutDialog.close();
-  logout();
-});
-
-elements.logoutCancelButton.addEventListener("click", () => {
-  elements.logoutDialog.close();
-});
-
-elements.backButton.addEventListener("click", () => {
-  showLoginView();
-});
+// ── Inicialização ─────────────────────────────────────────────
 
 window.addEventListener("load", () => {
   elements.authorizedAccountLabel.textContent = getAuthorizedEmail();
