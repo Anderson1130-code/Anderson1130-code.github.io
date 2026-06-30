@@ -136,6 +136,7 @@ async function handleTokenResponse(response) {
 
   state.accessToken = response.access_token;
   localStorage.setItem(AUTH_REMEMBER_KEY, "true");
+  localStorage.setItem("checklist-vtr-full-scope", "true");
   localStorage.setItem(AUTH_TOKEN_KEY, response.access_token);
   localStorage.setItem(
     AUTH_EXPIRY_KEY,
@@ -162,9 +163,7 @@ function requestGoogleAccess(prompt = "") {
   return true;
 }
 
-function requestLogin() {
-  requestGoogleAccess("");
-}
+
 
 async function restoreSession() {
   const remembered = localStorage.getItem(AUTH_REMEMBER_KEY) === "true";
