@@ -142,7 +142,7 @@ async function handleTokenResponse(response) {
   }
 }
 
-function requestGoogleAccess(prompt = "consent") {
+function requestGoogleAccess(prompt = "") {
   if (!state.tokenClient && !initializeTokenClient()) {
     showToast("O login do Google ainda está carregando. Tente novamente.");
     return false;
@@ -153,7 +153,7 @@ function requestGoogleAccess(prompt = "consent") {
 }
 
 function requestLogin() {
-  requestGoogleAccess("consent");
+  requestGoogleAccess("");
 }
 
 async function restoreSession() {
