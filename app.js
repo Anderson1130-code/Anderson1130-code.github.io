@@ -1,6 +1,6 @@
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
-const COMBINED_SCOPE = GMAIL_SCOPE + " " + DRIVE_SCOPE;
+const COMBINED_SCOPE = GMAIL_SCOPE + " " + DRIVE_SCOPE + " openid email";
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_FOLDER_NAME = "Checklists VTR";
@@ -89,7 +89,7 @@ function initializeTokenClient() {
 async function getProfileEmail(accessToken) {
   let response;
   try {
-    response = await fetch(`${GMAIL_API}/profile`, {
+    response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
   } catch {
@@ -97,7 +97,7 @@ async function getProfileEmail(accessToken) {
   }
   if (!response.ok) return "";
   const profile = await response.json().catch(() => null);
-  return profile?.emailAddress?.trim().toLowerCase() || "";
+  return profile?.email?.trim().toLowerCase() || "";
 }
 
 async function handleTokenResponse(response) {
