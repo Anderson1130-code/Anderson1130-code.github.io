@@ -1,6 +1,6 @@
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
-const COMBINED_SCOPE = GMAIL_SCOPE + " " + DRIVE_SCOPE + " openid email";
+const COMBINED_SCOPE = GMAIL_SCOPE + " " + DRIVE_SCOPE;
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_FOLDER_NAME = "Checklists VTR";
@@ -38,7 +38,10 @@ const elements = {
   authorizedAccountLabel: document.querySelector("#authorizedAccountLabel"),
   searchForm: document.querySelector("#searchForm"),
   searchButton: document.querySelector("#searchButton"),
-
+  vtrInput: document.querySelector("#vtrInput"),
+  vtrSelect: document.querySelector("#vtrSelect"),
+  vtrManualWrap: document.querySelector("#vtrManualWrap"),
+  vtrManualInput: document.querySelector("#vtrManualInput"),
   dateInput: document.querySelector("#dateInput"),
   statusMessage: document.querySelector("#statusMessage"),
   resultsHeader: document.querySelector("#resultsHeader"),
@@ -58,6 +61,13 @@ const elements = {
   clientIdInput: document.querySelector("#clientIdInput"),
   authorizedEmailInput: document.querySelector("#authorizedEmailInput"),
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
+  loginState: document.querySelector("#loginState"),
+  loggedState: document.querySelector("#loggedState"),
+  goSearchButton: document.querySelector("#goSearchButton"),
+  logoutDialog: document.querySelector("#logoutDialog"),
+  logoutConfirmButton: document.querySelector("#logoutConfirmButton"),
+  logoutCancelButton: document.querySelector("#logoutCancelButton"),
+  backButton: document.querySelector("#backButton"),
   toast: document.querySelector("#toast"),
 };
 
@@ -120,7 +130,7 @@ async function handleTokenResponse(response) {
       google.accounts.oauth2.revoke(response.access_token, () => {});
     }
     showLoginView();
-    showToast(`Acesso permitido somente para ${authorizedEmail}.`);
+    showToast(`Acesso permitido apenas para ${authorizedEmail}.`);
     return;
   }
 
@@ -182,7 +192,11 @@ async function restoreSession() {
     clearStoredToken();
   }
 
-  if (remembered) showSearchView();
+  if (remembered) {
+    showSearchView();
+  } else {
+    updateLoginCard();
+  }
 }
 
 function clearStoredToken() {
@@ -204,6 +218,17 @@ function showLoginView() {
   elements.loginView.classList.remove("hidden");
   elements.logoutButton.classList.add("hidden");
   clearResults();
+  updateLoginCard();
+}
+
+function updateLoginCard() {
+  const isLoggedIn = !!state.accessToken;
+  elements.loginState.classList.toggle("hidden", isLoggedIn);
+  elements.loggedState.classList.toggle("hidden", !isLoggedIn);
+}
+
+function openLogoutDialog() {
+  elements.logoutDialog.showModal();
 }
 
 function logout() {
@@ -280,7 +305,7 @@ function saveSettings(event) {
   if (previousToken && window.google?.accounts?.oauth2) {
     google.accounts.oauth2.revoke(previousToken, () => {});
   }
-  showToast("Configuração salva.");
+  showToast("Configurações salvas.");
 }
 
 function buildGmailQuery(vtr, date) {
@@ -403,7 +428,6 @@ async function mapWithConcurrency(items, limit, worker) {
 
 async function driveFetch(path) {
   if (!navigator.onLine) throw new Error("OFFLINE");
-
   let response;
   try {
     response = await fetch(`${DRIVE_API}${path}`, {
@@ -412,21 +436,15 @@ async function driveFetch(path) {
   } catch {
     throw new Error("NETWORK_ERROR");
   }
-
-  if (response.status === 401) {
-    clearStoredToken();
-    throw new Error("SESSION_EXPIRED");
-  }
+  if (response.status === 401) { clearStoredToken(); throw new Error("SESSION_EXPIRED"); }
   if (response.status === 403) throw new Error("GMAIL_PERMISSION");
   if (response.status === 404) throw new Error("ATTACHMENT_NOT_FOUND");
   if (response.status === 429) throw new Error("GMAIL_LIMIT");
   if (response.status >= 500) throw new Error("GMAIL_UNAVAILABLE");
-
   if (!response.ok) {
     const details = await response.json().catch(() => ({}));
     throw new Error(details.error?.message || "Falha ao acessar o Drive.");
   }
-
   return response;
 }
 
@@ -450,12 +468,7 @@ async function searchDrive(vtr, date) {
     `mimeType = 'application/pdf'`,
     `trashed = false`,
   ];
-
-  if (vtr) {
-    const safeVtr = vtr.replaceAll("'", "").trim();
-    parts.push(`name contains '${safeVtr}'`);
-  }
-
+  if (vtr) parts.push(`name contains '${vtr.replaceAll("'", "").trim()}'`);
   if (date) {
     const selected = new Date(`${date}T00:00:00`);
     const nextDay = new Date(selected);
@@ -470,7 +483,6 @@ async function searchDrive(vtr, date) {
     orderBy: "modifiedTime desc",
     pageSize: "100",
   });
-
   const response = await driveFetch(`/files?${params}`);
   const data = await response.json();
 
@@ -497,22 +509,18 @@ async function getPdfBlob(item) {
   }
 
   const blobPromise = (async () => {
-    // Arquivo do Drive
     if (item.source === "drive") {
       const response = await driveFetch(`/files/${item.driveFileId}?alt=media`);
       const arrayBuffer = await response.arrayBuffer();
       if (!arrayBuffer.byteLength) throw new Error("ATTACHMENT_EMPTY");
       return new Blob([arrayBuffer], { type: "application/pdf" });
     }
-
-    // Arquivo do Gmail
     let encodedData = item.inlineData;
     if (!encodedData) {
       const response = await gmailFetch(`/messages/${item.messageId}/attachments/${item.attachmentId}`);
       const data = await response.json();
       encodedData = data.data;
     }
-
     if (!encodedData) throw new Error("ATTACHMENT_EMPTY");
     let bytes;
     try {
@@ -577,17 +585,15 @@ async function executeSearch(vtr, date) {
   clearResults();
   setStatus("Buscando checklists...");
   try {
-    // Busca primeiro no Gmail
-    let results = await searchGmail(vtr, date);
-
-    // Se não encontrou no Gmail, busca no Drive
-    if (!results.length) {
-      setStatus("Não encontrado no e-mail. Buscando no Drive...");
-      const driveResults = await searchDrive(vtr, date);
-      results = driveResults;
-    }
-
-    renderResults(results);
+    const [gmailResults, driveResults] = await Promise.all([
+      searchGmail(vtr, date).catch(() => []),
+      searchDrive(vtr, date).catch(() => []),
+    ]);
+    // Junta resultados evitando duplicatas pelo nome do arquivo
+    const seen = new Set(gmailResults.map((r) => r.filename));
+    const merged = [...gmailResults, ...driveResults.filter((r) => !seen.has(r.filename))];
+    merged.sort((a, b) => b.timestamp - a.timestamp);
+    renderResults(merged);
   } catch (error) {
     console.error(error);
     setStatus(getErrorMessage(error, "Não foi possível concluir a pesquisa."), true);
@@ -605,7 +611,7 @@ function renderResults(results) {
 
   if (!results.length) {
     updateNewCount(0);
-    setStatus("Nenhum checklist foi encontrado para os filtros informados.");
+    setStatus("Nenhum checklist encontrado para os filtros informados.");
     return;
   }
 
@@ -771,8 +777,8 @@ function getErrorMessage(error, fallback) {
     GMAIL_REQUEST: "O Gmail não conseguiu processar esta solicitação. Revise os filtros e tente novamente.",
     GMAIL_PERMISSION: "O Gmail recusou o acesso. Verifique a autorização da conta nas configurações do Google.",
     GMAIL_LIMIT: "O Gmail recebeu muitas solicitações. Aguarde alguns instantes e tente novamente.",
-    GMAIL_UNAVAILABLE: "O serviço está temporariamente indisponível. Tente novamente mais tarde.",
-    ATTACHMENT_NOT_FOUND: "O checklist não está mais disponível.",
+    GMAIL_UNAVAILABLE: "O Gmail está temporariamente indisponível. Tente novamente mais tarde.",
+    ATTACHMENT_NOT_FOUND: "O checklist não está mais disponível neste e-mail.",
     ATTACHMENT_EMPTY: "O anexo está vazio e não pode ser aberto.",
     ATTACHMENT_INVALID: "O conteúdo do anexo está inválido ou danificado.",
   };
@@ -781,7 +787,7 @@ function getErrorMessage(error, fallback) {
 
 function getPdfErrorMessage(error) {
   if (["InvalidPDFException", "FormatError", "MissingPDFException"].includes(error?.name)) {
-    return "Este checklist está danificado ou não é um PDF válido.";
+    return "Este checklist está corrompido ou não é um PDF válido.";
   }
   return getErrorMessage(error, "Não foi possível abrir este checklist.");
 }
@@ -829,18 +835,6 @@ function showToast(message) {
   toastTimer = setTimeout(() => elements.toast.classList.remove("visible"), 2600);
 }
 
-elements.loginButton.addEventListener("click", requestLogin);
-elements.logoutButton.addEventListener("click", logout);
-elements.settingsButton.addEventListener("click", openSettings);
-elements.searchForm.addEventListener("submit", handleSearch);
-elements.adminUnlockForm.addEventListener("submit", unlockSettings);
-elements.settingsForm.addEventListener("submit", saveSettings);
-elements.closeSettingsButton.addEventListener("click", () => elements.settingsDialog.close());
-elements.closePdfButton.addEventListener("click", closePdf);
-elements.pdfDialog.addEventListener("close", () => {
-  state.pdfRenderId += 1;
-});
-
 elements.vtrSelect.addEventListener("change", () => {
   const val = elements.vtrSelect.value;
   if (val === "__manual__") {
@@ -858,6 +852,35 @@ elements.vtrManualInput.addEventListener("input", () => {
   const digits = elements.vtrManualInput.value.replace(/\D/g, "").slice(0, 4);
   elements.vtrManualInput.value = digits;
   elements.vtrInput.value = digits ? "25-" + digits : "";
+});
+
+elements.loginButton.addEventListener("click", requestLogin);
+elements.logoutButton.addEventListener("click", openLogoutDialog);
+elements.settingsButton.addEventListener("click", openSettings);
+elements.searchForm.addEventListener("submit", handleSearch);
+elements.adminUnlockForm.addEventListener("submit", unlockSettings);
+elements.settingsForm.addEventListener("submit", saveSettings);
+elements.closeSettingsButton.addEventListener("click", () => elements.settingsDialog.close());
+elements.closePdfButton.addEventListener("click", closePdf);
+elements.pdfDialog.addEventListener("close", () => {
+  state.pdfRenderId += 1;
+});
+
+elements.goSearchButton.addEventListener("click", () => {
+  showSearchView();
+});
+
+elements.logoutConfirmButton.addEventListener("click", () => {
+  elements.logoutDialog.close();
+  logout();
+});
+
+elements.logoutCancelButton.addEventListener("click", () => {
+  elements.logoutDialog.close();
+});
+
+elements.backButton.addEventListener("click", () => {
+  showLoginView();
 });
 
 window.addEventListener("load", () => {
