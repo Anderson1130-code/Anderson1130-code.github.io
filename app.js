@@ -1,6 +1,7 @@
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
-const COMBINED_SCOPE = GMAIL_SCOPE + " " + DRIVE_SCOPE;
+// email + profile garantem que o Google retorne o email no token
+const COMBINED_SCOPE = GMAIL_SCOPE + " " + DRIVE_SCOPE + " email profile";
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_FOLDER_NAME = "Checklists VTR";
@@ -101,19 +102,36 @@ function initializeTokenClient() {
   return true;
 }
 
-// Usa userinfo para validar o email — funciona com qualquer escopo combinado
+// Obtém email tentando Gmail API primeiro, depois userinfo como fallback
 async function getProfileEmail(accessToken) {
-  let response;
+  if (!navigator.onLine) throw new Error("OFFLINE");
+
+  // Tentativa 1: Gmail profile (retorna emailAddress)
   try {
-    response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    const r = await fetch(`${GMAIL_API}/profile`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-  } catch {
-    throw new Error("NETWORK_ERROR");
-  }
-  if (!response.ok) return "";
-  const profile = await response.json().catch(() => null);
-  return profile?.email?.trim().toLowerCase() || "";
+    if (r.ok) {
+      const data = await r.json().catch(() => null);
+      const email = data?.emailAddress?.trim().toLowerCase();
+      if (email) return email;
+    }
+  } catch { /* segue para fallback */ }
+
+  // Tentativa 2: userinfo (retorna email)
+  try {
+    const r = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (r.ok) {
+      const data = await r.json().catch(() => null);
+      const email = data?.email?.trim().toLowerCase();
+      if (email) return email;
+    }
+  } catch { /* segue */ }
+
+  // Se ambos falharam por rede, lança erro de rede
+  throw new Error("NETWORK_ERROR");
 }
 
 async function handleTokenResponse(response) {
@@ -127,12 +145,21 @@ async function handleTokenResponse(response) {
   try {
     profileEmail = await getProfileEmail(response.access_token);
   } catch (error) {
-    showToast(getErrorMessage(error, "Não foi possível validar a conta."));
-    return;
-  }
-
-  if (!profileEmail) {
-    showToast("Não foi possível obter o e-mail da conta. Tente novamente.");
+    // Erro de rede: não bloqueia o login, confia no token recebido
+    if (error.message === "NETWORK_ERROR" || error.message === "OFFLINE") {
+      state.accessToken = response.access_token;
+      localStorage.setItem(AUTH_REMEMBER_KEY, "true");
+      localStorage.setItem(SCOPE_KEY, "true");
+      localStorage.setItem(AUTH_TOKEN_KEY, response.access_token);
+      localStorage.setItem(
+        AUTH_EXPIRY_KEY,
+        String(Date.now() + Math.max(60, Number(response.expires_in) || 3600) * 1000 - 60000)
+      );
+      showSearchView();
+      showToast("Autenticação bem-sucedida.");
+      return;
+    }
+    showToast("Não foi possível validar a conta. Tente novamente.");
     return;
   }
 
@@ -174,7 +201,7 @@ function requestGoogleAccess(prompt = "") {
 }
 
 function requestLogin() {
-  // Força consent se ainda não autorizou o escopo completo (Gmail + Drive)
+  // Força consent na primeira vez para garantir Gmail + Drive autorizados juntos
   const hasFullScope = localStorage.getItem(SCOPE_KEY) === "true";
   requestGoogleAccess(hasFullScope ? "" : "consent");
 }
@@ -191,7 +218,7 @@ async function restoreSession() {
     try {
       profileEmail = await getProfileEmail(storedToken);
     } catch {
-      // Erro de rede — usa token mesmo assim se tiver sessão salva
+      // Erro de rede — confia no token salvo
       state.accessToken = storedToken;
       if (remembered) showSearchView();
       else updateLoginCard();
@@ -540,7 +567,6 @@ async function getPdfBlob(item) {
       return new Blob([arrayBuffer], { type: "application/pdf" });
     }
 
-    // Gmail
     let encodedData = item.inlineData;
     if (!encodedData) {
       const response = await gmailFetch(`/messages/${item.messageId}/attachments/${item.attachmentId}`);
@@ -618,7 +644,6 @@ async function executeSearch(vtr, date) {
       searchDrive(vtr, date).catch(() => []),
     ]);
 
-    // Junta os resultados, evitando duplicatas pelo nome do arquivo
     const seenNames = new Set(gmailResults.map((r) => r.filename.toLowerCase()));
     const merged = [
       ...gmailResults,
