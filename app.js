@@ -1,5 +1,9 @@
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+const COMBINED_SCOPE = GMAIL_SCOPE + " " + DRIVE_SCOPE;
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
+const DRIVE_API = "https://www.googleapis.com/drive/v3";
+const DRIVE_FOLDER_NAME = "Checklists VTR";
 const DEFAULT_CLIENT_ID = "325522605751-ifnqm5s29vd4k31mn21vrnqols5e0866.apps.googleusercontent.com";
 const DEFAULT_AUTHORIZED_EMAIL = "cheklistcicom@gmail.com";
 const ADMIN_PASSWORD_HASH = "8d9e98c047d58a294148dbf14d911c451e13b47aba079b53573f44a6a0d4bcde";
@@ -35,9 +39,6 @@ const elements = {
   searchForm: document.querySelector("#searchForm"),
   searchButton: document.querySelector("#searchButton"),
   vtrInput: document.querySelector("#vtrInput"),
-  vtrSelect: document.querySelector("#vtrSelect"),
-  vtrManualWrap: document.querySelector("#vtrManualWrap"),
-  vtrManualInput: document.querySelector("#vtrManualInput"),
   dateInput: document.querySelector("#dateInput"),
   statusMessage: document.querySelector("#statusMessage"),
   resultsHeader: document.querySelector("#resultsHeader"),
@@ -57,13 +58,6 @@ const elements = {
   clientIdInput: document.querySelector("#clientIdInput"),
   authorizedEmailInput: document.querySelector("#authorizedEmailInput"),
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
-  loginState: document.querySelector("#loginState"),
-  loggedState: document.querySelector("#loggedState"),
-  goSearchButton: document.querySelector("#goSearchButton"),
-  logoutDialog: document.querySelector("#logoutDialog"),
-  logoutConfirmButton: document.querySelector("#logoutConfirmButton"),
-  logoutCancelButton: document.querySelector("#logoutCancelButton"),
-  backButton: document.querySelector("#backButton"),
   toast: document.querySelector("#toast"),
 };
 
@@ -81,7 +75,7 @@ function initializeTokenClient() {
 
   state.tokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: clientId,
-    scope: GMAIL_SCOPE,
+    scope: COMBINED_SCOPE,
     hint: getAuthorizedEmail(),
     callback: handleTokenResponse,
     error_callback: (error) => {
@@ -126,7 +120,7 @@ async function handleTokenResponse(response) {
       google.accounts.oauth2.revoke(response.access_token, () => {});
     }
     showLoginView();
-    showToast(`Acesso permitido apenas para ${authorizedEmail}.`);
+    showToast(`Acesso permitido somente para ${authorizedEmail}.`);
     return;
   }
 
@@ -188,11 +182,7 @@ async function restoreSession() {
     clearStoredToken();
   }
 
-  if (remembered) {
-    showSearchView();
-  } else {
-    updateLoginCard();
-  }
+  if (remembered) showSearchView();
 }
 
 function clearStoredToken() {
@@ -214,17 +204,6 @@ function showLoginView() {
   elements.loginView.classList.remove("hidden");
   elements.logoutButton.classList.add("hidden");
   clearResults();
-  updateLoginCard();
-}
-
-function updateLoginCard() {
-  const isLoggedIn = !!state.accessToken;
-  elements.loginState.classList.toggle("hidden", isLoggedIn);
-  elements.loggedState.classList.toggle("hidden", !isLoggedIn);
-}
-
-function openLogoutDialog() {
-  elements.logoutDialog.showModal();
 }
 
 function logout() {
@@ -301,7 +280,7 @@ function saveSettings(event) {
   if (previousToken && window.google?.accounts?.oauth2) {
     google.accounts.oauth2.revoke(previousToken, () => {});
   }
-  showToast("Configurações salvas.");
+  showToast("Configuração salva.");
 }
 
 function buildGmailQuery(vtr, date) {
@@ -421,6 +400,94 @@ async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
+
+async function driveFetch(path) {
+  if (!navigator.onLine) throw new Error("OFFLINE");
+
+  let response;
+  try {
+    response = await fetch(`${DRIVE_API}${path}`, {
+      headers: { Authorization: `Bearer ${state.accessToken}` },
+    });
+  } catch {
+    throw new Error("NETWORK_ERROR");
+  }
+
+  if (response.status === 401) {
+    clearStoredToken();
+    throw new Error("SESSION_EXPIRED");
+  }
+  if (response.status === 403) throw new Error("GMAIL_PERMISSION");
+  if (response.status === 404) throw new Error("ATTACHMENT_NOT_FOUND");
+  if (response.status === 429) throw new Error("GMAIL_LIMIT");
+  if (response.status >= 500) throw new Error("GMAIL_UNAVAILABLE");
+
+  if (!response.ok) {
+    const details = await response.json().catch(() => ({}));
+    throw new Error(details.error?.message || "Falha ao acessar o Drive.");
+  }
+
+  return response;
+}
+
+async function getDriveFolderId() {
+  const params = new URLSearchParams({
+    q: `name = '${DRIVE_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id)",
+    pageSize: "1",
+  });
+  const response = await driveFetch(`/files?${params}`);
+  const data = await response.json();
+  return data.files?.[0]?.id || null;
+}
+
+async function searchDrive(vtr, date) {
+  const folderId = await getDriveFolderId();
+  if (!folderId) return [];
+
+  const parts = [
+    `'${folderId}' in parents`,
+    `mimeType = 'application/pdf'`,
+    `trashed = false`,
+  ];
+
+  if (vtr) {
+    const safeVtr = vtr.replaceAll("'", "").trim();
+    parts.push(`name contains '${safeVtr}'`);
+  }
+
+  if (date) {
+    const selected = new Date(`${date}T00:00:00`);
+    const nextDay = new Date(selected);
+    nextDay.setDate(selected.getDate() + 1);
+    parts.push(`modifiedTime >= '${selected.toISOString()}'`);
+    parts.push(`modifiedTime < '${nextDay.toISOString()}'`);
+  }
+
+  const params = new URLSearchParams({
+    q: parts.join(" and "),
+    fields: "files(id,name,size,modifiedTime)",
+    orderBy: "modifiedTime desc",
+    pageSize: "100",
+  });
+
+  const response = await driveFetch(`/files?${params}`);
+  const data = await response.json();
+
+  return (data.files || []).map((file) => ({
+    id: `drive-${file.id}`,
+    seenId: `drive-${file.id}-${file.size}`,
+    source: "drive",
+    driveFileId: file.id,
+    messageId: null,
+    attachmentId: null,
+    inlineData: "",
+    filename: file.name,
+    size: Number(file.size) || 0,
+    timestamp: new Date(file.modifiedTime).getTime(),
+  }));
+}
+
 async function getPdfBlob(item) {
   const cached = state.pdfBlobCache.get(item.id);
   if (cached) {
@@ -430,6 +497,15 @@ async function getPdfBlob(item) {
   }
 
   const blobPromise = (async () => {
+    // Arquivo do Drive
+    if (item.source === "drive") {
+      const response = await driveFetch(`/files/${item.driveFileId}?alt=media`);
+      const arrayBuffer = await response.arrayBuffer();
+      if (!arrayBuffer.byteLength) throw new Error("ATTACHMENT_EMPTY");
+      return new Blob([arrayBuffer], { type: "application/pdf" });
+    }
+
+    // Arquivo do Gmail
     let encodedData = item.inlineData;
     if (!encodedData) {
       const response = await gmailFetch(`/messages/${item.messageId}/attachments/${item.attachmentId}`);
@@ -501,7 +577,16 @@ async function executeSearch(vtr, date) {
   clearResults();
   setStatus("Buscando checklists...");
   try {
-    const results = await searchGmail(vtr, date);
+    // Busca primeiro no Gmail
+    let results = await searchGmail(vtr, date);
+
+    // Se não encontrou no Gmail, busca no Drive
+    if (!results.length) {
+      setStatus("Não encontrado no e-mail. Buscando no Drive...");
+      const driveResults = await searchDrive(vtr, date);
+      results = driveResults;
+    }
+
     renderResults(results);
   } catch (error) {
     console.error(error);
@@ -520,7 +605,7 @@ function renderResults(results) {
 
   if (!results.length) {
     updateNewCount(0);
-    setStatus("Nenhum checklist encontrado para os filtros informados.");
+    setStatus("Nenhum checklist foi encontrado para os filtros informados.");
     return;
   }
 
@@ -549,8 +634,8 @@ function renderResults(results) {
 
 function loadPdfJs() {
   if (!state.pdfJsPromise) {
-    state.pdfJsPromise = import("./pdf.mjs?v=25").then((pdfjsLib) => {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=25";
+    state.pdfJsPromise = import("./pdf.mjs?v=29").then((pdfjsLib) => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.mjs?v=29";
       return pdfjsLib;
     }).catch((error) => {
       state.pdfJsPromise = null;
@@ -686,8 +771,8 @@ function getErrorMessage(error, fallback) {
     GMAIL_REQUEST: "O Gmail não conseguiu processar esta solicitação. Revise os filtros e tente novamente.",
     GMAIL_PERMISSION: "O Gmail recusou o acesso. Verifique a autorização da conta nas configurações do Google.",
     GMAIL_LIMIT: "O Gmail recebeu muitas solicitações. Aguarde alguns instantes e tente novamente.",
-    GMAIL_UNAVAILABLE: "O Gmail está temporariamente indisponível. Tente novamente mais tarde.",
-    ATTACHMENT_NOT_FOUND: "O checklist não está mais disponível neste e-mail.",
+    GMAIL_UNAVAILABLE: "O serviço está temporariamente indisponível. Tente novamente mais tarde.",
+    ATTACHMENT_NOT_FOUND: "O checklist não está mais disponível.",
     ATTACHMENT_EMPTY: "O anexo está vazio e não pode ser aberto.",
     ATTACHMENT_INVALID: "O conteúdo do anexo está inválido ou danificado.",
   };
@@ -696,7 +781,7 @@ function getErrorMessage(error, fallback) {
 
 function getPdfErrorMessage(error) {
   if (["InvalidPDFException", "FormatError", "MissingPDFException"].includes(error?.name)) {
-    return "Este checklist está corrompido ou não é um PDF válido.";
+    return "Este checklist está danificado ou não é um PDF válido.";
   }
   return getErrorMessage(error, "Não foi possível abrir este checklist.");
 }
@@ -744,27 +829,8 @@ function showToast(message) {
   toastTimer = setTimeout(() => elements.toast.classList.remove("visible"), 2600);
 }
 
-elements.vtrSelect.addEventListener("change", () => {
-  const val = elements.vtrSelect.value;
-  if (val === "__manual__") {
-    elements.vtrManualWrap.classList.remove("hidden");
-    elements.vtrInput.value = "";
-    elements.vtrManualInput.value = "";
-    elements.vtrManualInput.focus();
-  } else {
-    elements.vtrManualWrap.classList.add("hidden");
-    elements.vtrInput.value = val;
-  }
-});
-
-elements.vtrManualInput.addEventListener("input", () => {
-  const digits = elements.vtrManualInput.value.replace(/\D/g, "").slice(0, 4);
-  elements.vtrManualInput.value = digits;
-  elements.vtrInput.value = digits ? "25-" + digits : "";
-});
-
 elements.loginButton.addEventListener("click", requestLogin);
-elements.logoutButton.addEventListener("click", openLogoutDialog);
+elements.logoutButton.addEventListener("click", logout);
 elements.settingsButton.addEventListener("click", openSettings);
 elements.searchForm.addEventListener("submit", handleSearch);
 elements.adminUnlockForm.addEventListener("submit", unlockSettings);
@@ -775,30 +841,13 @@ elements.pdfDialog.addEventListener("close", () => {
   state.pdfRenderId += 1;
 });
 
-elements.goSearchButton.addEventListener("click", () => {
-  showSearchView();
-});
-
-elements.logoutConfirmButton.addEventListener("click", () => {
-  elements.logoutDialog.close();
-  logout();
-});
-
-elements.logoutCancelButton.addEventListener("click", () => {
-  elements.logoutDialog.close();
-});
-
-elements.backButton.addEventListener("click", () => {
-  showLoginView();
-});
-
 window.addEventListener("load", () => {
   elements.authorizedAccountLabel.textContent = getAuthorizedEmail();
   initializeTokenClient();
   restoreSession();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=25", { updateViaCache: "none" })
+      .register("./sw.js?v=29", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(console.error);
   }
