@@ -15,7 +15,7 @@ const AUTH_TOKEN_KEY = "checklist-vtr-access-token";
 const AUTH_EXPIRY_KEY = "checklist-vtr-token-expiry";
 const SCOPE_KEY = "checklist-vtr-full-scope";
 const SEEN_ITEMS_KEY = "checklist-vtr-seen-items";
-const PDF_CACHE_LIMIT = 2;
+const PDF_CACHE_LIMIT = 5;
 const DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "medium",
   timeStyle: "short",
@@ -688,6 +688,9 @@ function renderResults(results) {
     card.querySelector(".new-label").classList.toggle("hidden", !isNew);
     card.querySelector(".result-date").textContent = formatDate(item.timestamp);
     card.querySelector(".result-size").textContent = formatBytes(item.size);
+    const prefetch = () => getPdfBlob(item).catch(() => {});
+    card.addEventListener("mouseenter", prefetch, { once: true });
+    card.addEventListener("touchstart", prefetch, { once: true, passive: true });
     card.querySelector(".view-button").addEventListener("click", () => viewPdf(item));
     card.querySelector(".download-button").addEventListener("click", () => downloadPdf(item));
     fragment.append(card);
@@ -712,6 +715,29 @@ function loadPdfJs() {
   return state.pdfJsPromise;
 }
 
+async function renderPage(pdf, pageNumber, availableWidth) {
+  const page = await pdf.getPage(pageNumber);
+  const baseViewport = page.getViewport({ scale: 1 });
+  const cssScale = Math.min(1.6, availableWidth / baseViewport.width);
+  const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+  const renderViewport = page.getViewport({ scale: cssScale * outputScale });
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { alpha: false });
+
+  canvas.width = Math.floor(renderViewport.width);
+  canvas.height = Math.floor(renderViewport.height);
+  canvas.style.width = `${Math.floor(baseViewport.width * cssScale)}px`;
+  canvas.style.height = `${Math.floor(baseViewport.height * cssScale)}px`;
+
+  await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+  page.cleanup();
+
+  const pageElement = document.createElement("div");
+  pageElement.className = "pdf-page";
+  pageElement.append(canvas);
+  return pageElement;
+}
+
 async function viewPdf(item) {
   const renderId = ++state.pdfRenderId;
   elements.pdfTitle.textContent = item.filename;
@@ -719,38 +745,31 @@ async function viewPdf(item) {
   elements.pdfDialog.showModal();
 
   try {
+    // Inicia download do blob e carregamento do PDF.js em paralelo
     const [blob, pdfjsLib] = await Promise.all([getPdfBlob(item), loadPdfJs()]);
+    if (renderId !== state.pdfRenderId) return;
+
     const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
+    if (renderId !== state.pdfRenderId) return;
+
     markItemSeen(item);
-    elements.pdfViewer.replaceChildren();
+    const availableWidth = Math.max(280, elements.pdfViewer.clientWidth - 24);
 
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    // Renderiza primeira página imediatamente
+    const firstPageElement = await renderPage(pdf, 1, availableWidth);
+    if (renderId !== state.pdfRenderId) return;
+
+    elements.pdfViewer.replaceChildren(firstPageElement);
+
+    // Renderiza páginas restantes em segundo plano sem bloquear a UI
+    for (let pageNumber = 2; pageNumber <= pdf.numPages; pageNumber += 1) {
       if (renderId !== state.pdfRenderId) return;
-
-      const page = await pdf.getPage(pageNumber);
-      const baseViewport = page.getViewport({ scale: 1 });
-      const availableWidth = Math.max(280, elements.pdfViewer.clientWidth - 24);
-      const cssScale = Math.min(1.6, availableWidth / baseViewport.width);
-      const outputScale = Math.min(window.devicePixelRatio || 1, 2);
-      const renderViewport = page.getViewport({ scale: cssScale * outputScale });
-      const canvas = document.createElement("canvas");
-      const pageElement = document.createElement("div");
-      const context = canvas.getContext("2d", { alpha: false });
-
-      canvas.width = Math.floor(renderViewport.width);
-      canvas.height = Math.floor(renderViewport.height);
-      canvas.style.width = `${Math.floor(baseViewport.width * cssScale)}px`;
-      canvas.style.height = `${Math.floor(baseViewport.height * cssScale)}px`;
-      pageElement.className = "pdf-page";
-      pageElement.append(canvas);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const pageElement = await renderPage(pdf, pageNumber, availableWidth);
+      if (renderId !== state.pdfRenderId) return;
       elements.pdfViewer.append(pageElement);
-
-      await page.render({ canvasContext: context, viewport: renderViewport }).promise;
-      page.cleanup();
-      if (pageNumber < pdf.numPages) {
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-      }
     }
+
     pdf.cleanup();
   } catch (error) {
     console.error(error);
@@ -943,6 +962,8 @@ window.addEventListener("load", () => {
   elements.authorizedAccountLabel.textContent = getAuthorizedEmail();
   initializeTokenClient();
   restoreSession();
+  // Pré-carrega PDF.js em segundo plano para visualização mais rápida
+  setTimeout(() => loadPdfJs().catch(() => {}), 2000);
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
       .register("./sw.js?v=29", { updateViaCache: "none" })
